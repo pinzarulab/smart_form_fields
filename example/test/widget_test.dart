@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smart_form_fields/smart_form_fields.dart';
 import 'package:smart_form_fields_example/app.dart';
 
 void main() {
@@ -15,6 +16,7 @@ void main() {
     expect(find.text('Registration form'), findsOneWidget);
     expect(find.text('Item-driven form'), findsOneWidget);
     for (final title in const <String>[
+      'Typed developer API',
       'Class-defined form',
       'JSON API form',
       'Controller playground',
@@ -367,6 +369,136 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Custom animation form is valid.'), findsOneWidget);
+  });
+
+  testWidgets(
+    'demonstrates typed developer API model form, accessors, and rejection',
+    (tester) async {
+      await tester.pumpWidget(const SmartFormFieldsExampleApp());
+      await _openExample(tester, 'Typed developer API');
+
+      expect(find.text('Mara Ionescu'), findsOneWidget);
+      expect(find.text('mara@example.com'), findsOneWidget);
+      expect(find.text('isDirty: false (none)'), findsOneWidget);
+
+      // Test Set Email via Accessor button
+      final setViaAccessorBtn = find.widgetWithText(
+        OutlinedButton,
+        'Set Email via Accessor',
+      );
+      await tester.ensureVisible(setViaAccessorBtn);
+      await tester.tap(setViaAccessorBtn);
+      await tester.pump();
+
+      expect(find.text('dev@smartform.io'), findsWidgets);
+      expect(find.text('isDirty: true (email)'), findsOneWidget);
+
+      // Reset
+      final resetBtn = find.widgetWithText(ActionChip, 'Reset Form');
+      await tester.ensureVisible(resetBtn);
+      await tester.tap(resetBtn);
+      await tester.pump();
+      expect(find.text('isDirty: false (none)'), findsOneWidget);
+
+      // Server rejection test
+      final emailField = find.widgetWithText(TextField, 'Email');
+      await tester.ensureVisible(emailField);
+      await tester.enterText(emailField, 'taken@example.com');
+      await tester.pump();
+
+      final submitBtn = find.byType(FilledButton).first;
+      await tester.ensureVisible(submitBtn);
+      
+      final dynamic formState = tester.state(find.byType(SmartForm).first);
+      final dynamic validation = await formState.validate();
+      // ignore: avoid_print
+      print('DEBUG VALIDATION: isValid=${validation.isValid}, errors=${validation.errors}, firstInvalid=${validation.firstInvalidFieldName}');
+
+      await tester.tap(submitBtn);
+      await tester.pump();
+      expect(find.text('Saving Profile…'), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      for (final textWidget in tester.widgetList<Text>(find.byType(Text))) {
+        if (textWidget.data != null) {
+          // ignore: avoid_print
+          print('DEBUG TEXT: "${textWidget.data}"');
+        }
+      }
+      expect(
+        find.text('Email is already taken by another account.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Server rejected registration: account conflict occurred.'),
+        findsOneWidget,
+      );
+      expect(find.text('Phase: rejected'), findsOneWidget);
+    },
+  );
+
+  testWidgets('demonstrates multi-step reveal hook navigation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SmartFormFieldsExampleApp());
+    await _openExample(tester, 'Typed developer API');
+
+    // Switch to tab 2: Steps & Reveal
+    await tester.tap(find.text('Steps & Reveal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Step 1: Account Setup'), findsOneWidget);
+
+    // Switch step to Step 2
+    final step2Btn = find.widgetWithText(FilledButton, 'Step 2: Profile Info');
+    await tester.tap(step2Btn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Step 2: Personal Details'), findsOneWidget);
+
+    // Validate All Steps while on Step 2; Step 1 has invalid empty username & password
+    final validateAllBtn = find.widgetWithText(
+      FilledButton,
+      'Validate All Steps',
+    );
+    await tester.tap(validateAllBtn);
+    await tester.pumpAndSettle();
+
+    // onRevealField should have automatically switched back to Step 1!
+    expect(find.text('Step 1: Account Setup'), findsOneWidget);
+    expect(
+      find.text('Last revealed field: step_username'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('demonstrates convenience view items and schema fallback', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SmartFormFieldsExampleApp());
+    await _openExample(tester, 'Typed developer API');
+
+    // Switch to tab 3: Items & Schemas
+    await tester.tap(find.text('Items & Schemas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Email View Item'), findsOneWidget);
+    expect(find.text('Password View Item'), findsOneWidget);
+    expect(find.text('Plan View Item'), findsOneWidget);
+    expect(find.text('Picker View Item'), findsOneWidget);
+
+    // Verify unknown field fallback builder
+    final fallbackFinder = find.text(
+      'Unknown field type "color_palette_picker" for "theme_color". '
+      'Handled via SmartFormSchemaRegistry.unknownFieldBuilder fallback!',
+    );
+    await tester.scrollUntilVisible(
+      fallbackFinder,
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(fallbackFinder, findsOneWidget);
+    expect(find.text('System Assigned ID (Read-Only)'), findsOneWidget);
   });
 }
 

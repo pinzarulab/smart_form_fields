@@ -43,8 +43,8 @@ class ExampleHomeScreen extends StatelessWidget {
               icon: Icons.code_outlined,
               title: 'Typed developer API',
               description:
-                  'Typed field IDs, model adapters, live field state, custom '
-                  'pickers, conditional retention, and structured submission.',
+                  'Typed field IDs, model adapters, live field state & accessors, '
+                  'multi-step reveal navigation, convenience items, and schema registries.',
               onTap: () => _open(context, const DeveloperApiExamplePage()),
             ),
             const SizedBox(height: 12),
