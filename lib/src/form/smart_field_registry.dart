@@ -32,7 +32,8 @@ final class SmartFieldRegistry {
   }
 
   Map<String, Object?> get values => <String, Object?>{
-    for (final field in fields) field.name: field.value,
+    for (final field in fields)
+      if (field.includeInResult) field.name: field.value,
   };
 
   Map<String, SmartFormFieldStatus> get statuses =>
@@ -42,16 +43,23 @@ final class SmartFieldRegistry {
             name: field.name,
             value: field.value,
             enabled: field.enabled,
+            readOnly: field.readOnly,
             excludeFromDraft: field.excludeFromDraft,
             isDirty: field.isDirty,
+            isTouched: field.isTouched,
+            hasValidated: field.hasValidated,
             isValid: field.isValid,
             isValidating: field.isValidating,
             errorText: field.errorText,
+            errorSource: field.errorSource,
           ),
       };
 
   Future<Map<String, Object?>> resolveResultValues() async {
-    final orderedFields = fields;
+    final orderedFields = <SmartFieldHandle<Object?>>[
+      for (final field in fields)
+        if (field.includeInResult) field,
+    ];
     final resolvedValues = await Future.wait<Object?>(
       orderedFields.map((field) => field.resolveResultValue()),
     );

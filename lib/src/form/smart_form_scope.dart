@@ -3,6 +3,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../localization/smart_form_messages.dart';
 import '../validation/smart_validation_context.dart';
 import 'smart_field_handle.dart';
 
@@ -34,6 +35,7 @@ final class SmartFormScope extends InheritedWidget {
     required this.errorAnimation,
     required this.errorAnimationBuilder,
     required this.autovalidateMode,
+    required this.messages,
     required super.child,
     super.key,
   });
@@ -45,6 +47,7 @@ final class SmartFormScope extends InheritedWidget {
   final SmartErrorAnimation errorAnimation;
   final SmartErrorAnimationBuilder? errorAnimationBuilder;
   final AutovalidateMode autovalidateMode;
+  final SmartFormMessages messages;
 
   static SmartFormScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<SmartFormScope>();
@@ -69,7 +72,8 @@ final class SmartFormScope extends InheritedWidget {
         scrollAlignment != oldWidget.scrollAlignment ||
         errorAnimation != oldWidget.errorAnimation ||
         !identical(errorAnimationBuilder, oldWidget.errorAnimationBuilder) ||
-        autovalidateMode != oldWidget.autovalidateMode;
+        autovalidateMode != oldWidget.autovalidateMode ||
+        !identical(messages, oldWidget.messages);
   }
 }
 
@@ -92,5 +96,28 @@ final class SmartFormOrderScope extends InheritedWidget {
   @override
   bool updateShouldNotify(SmartFormOrderScope oldWidget) {
     return order != oldWidget.order;
+  }
+}
+
+final class SmartFieldActivityScope extends InheritedWidget {
+  const SmartFieldActivityScope({
+    required this.active,
+    required this.includeInResult,
+    required super.child,
+    super.key,
+  });
+
+  final bool active;
+  final bool includeInResult;
+
+  static SmartFieldActivityScope? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<SmartFieldActivityScope>();
+  }
+
+  @override
+  bool updateShouldNotify(SmartFieldActivityScope oldWidget) {
+    return active != oldWidget.active ||
+        includeInResult != oldWidget.includeInResult;
   }
 }

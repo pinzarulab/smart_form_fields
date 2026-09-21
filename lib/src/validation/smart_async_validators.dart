@@ -17,4 +17,15 @@ abstract final class SmartAsyncValidators {
       validator: validator,
     );
   }
+
+  /// Creates an async validator with cooperative cancellation support.
+  static SmartAsyncValidator<T> controlled<T>({
+    Iterable<String> dependsOn = const <String>[],
+    required SmartControlledAsyncValidator<T> validator,
+  }) {
+    return createControlledAsyncValidator<T>(
+      dependsOn: dependsOn,
+      validator: validator,
+    );
+  }
 }

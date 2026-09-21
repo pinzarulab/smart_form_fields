@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
 import '../validation/smart_validators.dart';
 import 'smart_text_field.dart';
+import 'smart_form_field.dart';
 
 /// A password field with optional required and minimum-length validation.
 class SmartPasswordField extends StatefulWidget {
   /// Creates a password field registered as [name].
   const SmartPasswordField({
-    required this.name,
+    String? name,
+    this.fieldId,
     this.initialValue,
     this.controller,
     this.focusNode,
     this.required = false,
-    this.requiredMessage = 'This field is required.',
+    this.requiredMessage,
     this.minLength = 8,
     this.minLengthMessage,
     this.validators = const [],
@@ -25,18 +28,31 @@ class SmartPasswordField extends StatefulWidget {
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.showVisibilityToggle = true,
     this.initiallyObscured = true,
     this.textInputAction,
     this.onChanged,
     this.onSubmitted,
+    this.resultValueTransformer,
     this.excludeFromDraft = false,
     super.key,
-  }) : assert(minLength == null || minLength >= 0);
+  }) : assert(minLength == null || minLength >= 0),
+       assert(
+         (name != null && name.length > 0) || fieldId != null,
+         'Provide a non-empty name or SmartFieldId.',
+       ),
+       _name = name;
 
   /// Unique form field name.
-  final String name;
+  final String? _name;
+
+  /// Optional typed identity for this field.
+  final SmartFieldId<String>? fieldId;
+
+  /// Unique form field name.
+  String get name => _name ?? fieldId!.name;
 
   /// Initial password used when no [controller] is supplied.
   final String? initialValue;
@@ -51,7 +67,7 @@ class SmartPasswordField extends StatefulWidget {
   final bool required;
 
   /// Message returned when [required] validation fails.
-  final String requiredMessage;
+  final String? requiredMessage;
 
   /// Minimum password length, or null to disable length validation.
   final int? minLength;
@@ -80,6 +96,9 @@ class SmartPasswordField extends StatefulWidget {
   /// Whether the field accepts input and participates in validation.
   final bool enabled;
 
+  /// Whether input is locked while validation remains enabled.
+  final bool readOnly;
+
   /// Material input decoration.
   final InputDecoration decoration;
 
@@ -97,6 +116,9 @@ class SmartPasswordField extends StatefulWidget {
 
   /// Called when the platform submits the password field.
   final ValueChanged<String>? onSubmitted;
+
+  /// Optionally transforms submitted password text.
+  final SmartResultValueTransformer<String>? resultValueTransformer;
 
   /// Whether this field is omitted from persisted draft payloads.
   final bool excludeFromDraft;
@@ -148,7 +170,9 @@ class _SmartPasswordFieldState extends State<SmartPasswordField> {
         ? widget.decoration.copyWith(
             suffixIcon: IconButton(
               tooltip: _obscured ? 'Show password' : 'Hide password',
-              onPressed: widget.enabled ? _toggleVisibility : null,
+              onPressed: widget.enabled && !widget.readOnly
+                  ? _toggleVisibility
+                  : null,
               icon: Icon(
                 _obscured
                     ? Icons.visibility_outlined
@@ -170,6 +194,7 @@ class _SmartPasswordFieldState extends State<SmartPasswordField> {
       errorAnimation: widget.errorAnimation,
       errorAnimationBuilder: widget.errorAnimationBuilder,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
       decoration: decoration,
       textInputAction: widget.textInputAction,
       obscureText: _obscured,
@@ -177,6 +202,7 @@ class _SmartPasswordFieldState extends State<SmartPasswordField> {
       enableSuggestions: false,
       onChanged: widget.onChanged,
       onSubmitted: widget.onSubmitted,
+      resultValueTransformer: widget.resultValueTransformer,
       excludeFromDraft: widget.excludeFromDraft,
     );
   }

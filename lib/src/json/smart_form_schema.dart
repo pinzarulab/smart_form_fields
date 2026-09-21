@@ -4,15 +4,21 @@ import 'package:flutter/widgets.dart';
 
 import '../animation/smart_error_animation.dart';
 
+/// Extracts a schema object from an application-specific API response.
+typedef SmartFormSchemaExtractor =
+    Map<String, Object?> Function(Object? response);
+
 /// An immutable form definition created in Dart or parsed from JSON.
 final class SmartFormSchema {
   /// Creates an immutable schema from parsed field definitions and behavior.
   SmartFormSchema({
     required List<SmartFieldDefinition> fields,
+    this.schemaVersion = 1,
     this.scrollToFirstError,
     this.focusFirstError,
     this.errorAnimation,
-  }) : fields = List<SmartFieldDefinition>.unmodifiable(fields);
+  }) : assert(schemaVersion > 0, 'schemaVersion must be positive.'),
+       fields = List<SmartFieldDefinition>.unmodifiable(fields);
 
   /// Parses a snake_case JSON object into a validated schema.
   factory SmartFormSchema.fromJson(Map<String, Object?> json) {
@@ -31,6 +37,8 @@ final class SmartFormSchema {
             path: 'fields[$index]',
           ),
       ],
+      schemaVersion:
+          _optionalInt(json['schema_version'], 'schema_version') ?? 1,
       scrollToFirstError: _optionalBool(
         json['scroll_to_first_error'],
         'scroll_to_first_error',
@@ -43,8 +51,31 @@ final class SmartFormSchema {
     );
   }
 
+  /// Extracts and parses a schema from a complete decoded API [response].
+  factory SmartFormSchema.fromResponse(
+    Object? response, {
+    SmartFormSchemaExtractor? extractor,
+    List<Object> path = const <Object>[],
+  }) {
+    if (extractor != null) {
+      return SmartFormSchema.fromJson(extractor(response));
+    }
+    final selected = path.isEmpty
+        ? _findSchemaMap(response)
+        : _readSchemaPath(response, path);
+    if (selected == null) {
+      throw const FormatException(
+        'Could not find a smart form schema containing a fields list.',
+      );
+    }
+    return SmartFormSchema.fromJson(selected);
+  }
+
   /// Field definitions in display and validation order.
   final List<SmartFieldDefinition> fields;
+
+  /// Application schema version carried by JSON or Dart definitions.
+  final int schemaVersion;
 
   /// Optional schema-level first-error scrolling override.
   final bool? scrollToFirstError;
@@ -86,10 +117,13 @@ final class SmartFieldDefinition {
     String? helperText,
     String? initialValue,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     int maxLines = 1,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -103,9 +137,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue,
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{'max_lines': maxLines},
       ),
       validators: validators,
@@ -122,10 +159,13 @@ final class SmartFieldDefinition {
     String? helperText,
     String? initialValue,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     String? invalidEmailMessage,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -139,9 +179,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue,
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{'invalid_email_message': ?invalidEmailMessage},
       ),
       validators: validators,
@@ -159,9 +202,12 @@ final class SmartFieldDefinition {
     String? initialValue,
     String? countryCode,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -175,9 +221,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue,
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{'country_code': ?countryCode},
       ),
       validators: validators,
@@ -194,12 +243,15 @@ final class SmartFieldDefinition {
     String? helperText,
     String? initialValue,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     int? minLength = 8,
     String? minLengthMessage,
     bool showVisibilityToggle = true,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -213,9 +265,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue,
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{
           'min_length': ?minLength,
           'min_length_message': ?minLengthMessage,
@@ -238,9 +293,12 @@ final class SmartFieldDefinition {
     DateTime? firstDate,
     DateTime? lastDate,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -254,9 +312,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue?.toIso8601String(),
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{
           if (firstDate != null) 'first_date': firstDate.toIso8601String(),
           if (lastDate != null) 'last_date': lastDate.toIso8601String(),
@@ -277,9 +338,12 @@ final class SmartFieldDefinition {
     String? helperText,
     Object? initialValue,
     bool enabled = true,
+    bool readOnly = false,
     bool required = false,
     String? requiredMessage,
     AutovalidateMode? autovalidateMode,
+    Duration? asyncValidationDebounce,
+    SmartFieldVisibilityDefinition? visibility,
     List<SmartValidatorDefinition> validators = const [],
     List<String> asyncValidators = const [],
     Map<String, List<String>> asyncValidatorDependencies = const {},
@@ -293,9 +357,12 @@ final class SmartFieldDefinition {
         helperText: helperText,
         initialValue: initialValue,
         enabled: enabled,
+        readOnly: readOnly,
         required: required,
         requiredMessage: requiredMessage,
         autovalidateMode: autovalidateMode,
+        asyncValidationDebounce: asyncValidationDebounce,
+        visibility: visibility,
         extra: <String, Object?>{
           'options': <Map<String, Object?>>[
             for (final option in options) option.toMap(),
@@ -600,6 +667,30 @@ final class SmartOptionDefinition {
   };
 }
 
+/// Visibility rule shared by Dart and JSON field definitions.
+final class SmartFieldVisibilityDefinition {
+  /// Creates a simple equality-based visibility rule.
+  const SmartFieldVisibilityDefinition({
+    required this.field,
+    required this.equals,
+    this.hiddenValueBehavior = 'remove',
+  });
+
+  /// Source field name.
+  final String field;
+
+  /// Value that makes the target field visible.
+  final Object? equals;
+
+  /// `remove`, `preserve`, or `preserve_and_exclude`.
+  final String hiddenValueBehavior;
+
+  Map<String, Object?> _toProperties() => <String, Object?>{
+    'visible_when': <String, Object?>{'field': field, 'equals': equals},
+    'hidden_value_behavior': hiddenValueBehavior,
+  };
+}
+
 /// Backwards-compatible name for JSON-oriented integrations.
 typedef SmartJsonFieldDefinition = SmartFieldDefinition;
 
@@ -612,9 +703,12 @@ Map<String, Object?> _standardFieldProperties({
   required String? helperText,
   required Object? initialValue,
   required bool enabled,
+  bool readOnly = false,
   required bool required,
   required String? requiredMessage,
   required AutovalidateMode? autovalidateMode,
+  Duration? asyncValidationDebounce,
+  SmartFieldVisibilityDefinition? visibility,
   Map<String, Object?> extra = const {},
 }) {
   return <String, Object?>{
@@ -623,11 +717,14 @@ Map<String, Object?> _standardFieldProperties({
     'helper_text': ?helperText,
     'initial_value': ?initialValue,
     'enabled': enabled,
+    'read_only': readOnly,
     'required': required,
     'required_message': ?requiredMessage,
     'autovalidate_mode': ?autovalidateMode == null
         ? null
         : _autovalidateModeName(autovalidateMode),
+    'async_validation_debounce_ms': ?asyncValidationDebounce?.inMilliseconds,
+    ...?visibility?._toProperties(),
     ...extra,
   };
 }
@@ -696,6 +793,61 @@ int? _optionalInt(Object? value, String path) {
     throw FormatException('$path must be an integer.');
   }
   return value;
+}
+
+Map<String, Object?>? _findSchemaMap(Object? value) {
+  if (value is Map<Object?, Object?>) {
+    final map = <String, Object?>{
+      for (final entry in value.entries)
+        if (entry.key is String) entry.key! as String: entry.value,
+    };
+    if (map['fields'] is List<Object?>) {
+      return map;
+    }
+    for (final key in const <String>['data', 'form', 'schema', 'payload']) {
+      final found = _findSchemaMap(map[key]);
+      if (found != null) {
+        return found;
+      }
+    }
+    for (final nested in map.values) {
+      final found = _findSchemaMap(nested);
+      if (found != null) {
+        return found;
+      }
+    }
+  } else if (value is List<Object?>) {
+    for (final nested in value) {
+      final found = _findSchemaMap(nested);
+      if (found != null) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
+Map<String, Object?>? _readSchemaPath(Object? value, List<Object> path) {
+  Object? current = value;
+  for (final segment in path) {
+    if (segment is String && current is Map<Object?, Object?>) {
+      current = current[segment];
+    } else if (segment is int && current is List<Object?>) {
+      if (segment < 0 || segment >= current.length) {
+        return null;
+      }
+      current = current[segment];
+    } else {
+      return null;
+    }
+  }
+  if (current is! Map<Object?, Object?>) {
+    return null;
+  }
+  return <String, Object?>{
+    for (final entry in current.entries)
+      if (entry.key is String) entry.key! as String: entry.value,
+  };
 }
 
 num? _optionalNum(Object? value, String path) {

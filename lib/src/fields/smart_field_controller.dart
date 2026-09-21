@@ -11,6 +11,9 @@ abstract interface class SmartFieldController<T> {
   /// Whether this field accepts input and participates in validation.
   bool get enabled;
 
+  /// Whether user input is locked while validation remains enabled.
+  bool get readOnly;
+
   /// Whether the field currently has no error.
   bool get isValid;
 

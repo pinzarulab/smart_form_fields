@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'smart_field_id.dart';
+
 /// An immutable snapshot produced by validating a smart form.
 final class SmartFormResult {
   /// Creates an immutable validation result from the supplied snapshots.
@@ -7,6 +9,7 @@ final class SmartFormResult {
     required this.isValid,
     required Map<String, Object?> values,
     required Map<String, String> errors,
+    this.firstInvalidFieldName,
   }) : values = UnmodifiableMapView(Map<String, Object?>.of(values)),
        errors = UnmodifiableMapView(Map<String, String>.of(errors));
 
@@ -19,8 +22,14 @@ final class SmartFormResult {
   /// Validation errors keyed by field name.
   final Map<String, String> errors;
 
+  /// Name of the first invalid field in form order, when invalid.
+  final String? firstInvalidFieldName;
+
   /// Whether a value for [name] exists in this result.
   bool contains(String name) => values.containsKey(name);
+
+  /// Whether a typed [field] exists in this result.
+  bool containsField<T>(SmartFieldId<T> field) => contains(field.name);
 
   /// Returns field [name] as [T], or null when its value is null.
   ///
@@ -46,6 +55,16 @@ final class SmartFormResult {
     }
     return value as T;
   }
+
+  /// Returns the value for a typed [field].
+  T? valueFor<T>(SmartFieldId<T> field) => valueOf<T>(field.name);
+
+  /// Returns the error for [field], or null when valid or unknown.
+  String? errorOf(Object field) => errors[smartFieldName(field)];
+
+  /// Decodes this valid result with [decoder].
+  T? decode<T>(T Function(SmartFormResult result) decoder) =>
+      isValid ? decoder(this) : null;
 
   /// Returns the text value for [name], or null when the value is null.
   ///

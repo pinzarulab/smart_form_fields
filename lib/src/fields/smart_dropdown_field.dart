@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../form/smart_form_scope.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
@@ -21,32 +22,46 @@ typedef SmartDropdownItemBuilder<T> =
 class SmartDropdownField<T> extends StatefulWidget {
   /// Creates a Material dropdown registered as [name].
   const SmartDropdownField({
-    required this.name,
+    String? name,
+    this.fieldId,
     required this.items,
     required this.itemLabelBuilder,
     this.itemBuilder,
     this.initialValue,
     this.focusNode,
     this.required = false,
-    this.requiredMessage = 'This field is required.',
+    this.requiredMessage,
     this.validators = const [],
     this.asyncValidators = const [],
+    this.asyncValidationDebounce,
     this.autovalidateMode,
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.hint,
     this.disabledHint,
     this.isExpanded = true,
     this.menuMaxHeight,
     this.onChanged,
+    this.resultValueTransformer,
     this.excludeFromDraft = false,
     super.key,
-  });
+  }) : assert(
+         (name != null && name.length > 0) || fieldId != null,
+         'Provide a non-empty name or SmartFieldId.',
+       ),
+       _name = name;
 
   /// Unique form field name.
-  final String name;
+  final String? _name;
+
+  /// Optional typed identity for this field.
+  final SmartFieldId<T>? fieldId;
+
+  /// Unique form field name.
+  String get name => _name ?? fieldId!.name;
 
   /// Values available for selection.
   final List<T> items;
@@ -67,13 +82,16 @@ class SmartDropdownField<T> extends StatefulWidget {
   final bool required;
 
   /// Message returned when [required] validation fails.
-  final String requiredMessage;
+  final String? requiredMessage;
 
   /// Additional synchronous validators run after required validation.
   final List<SmartValueValidator<T>> validators;
 
   /// Asynchronous validators run after synchronous validators pass.
   final List<SmartAsyncValidator<T>> asyncValidators;
+
+  /// Debounce applied to automatic asynchronous validation.
+  final Duration? asyncValidationDebounce;
 
   /// Field-level automatic validation override.
   final AutovalidateMode? autovalidateMode;
@@ -86,6 +104,9 @@ class SmartDropdownField<T> extends StatefulWidget {
 
   /// Whether the dropdown accepts input and participates in validation.
   final bool enabled;
+
+  /// Whether selection is locked while validation remains enabled.
+  final bool readOnly;
 
   /// Material input decoration.
   final InputDecoration decoration;
@@ -104,6 +125,9 @@ class SmartDropdownField<T> extends StatefulWidget {
 
   /// Called whenever the selected value changes.
   final ValueChanged<T?>? onChanged;
+
+  /// Optionally transforms the selected value for submission.
+  final SmartResultValueTransformer<T>? resultValueTransformer;
 
   /// Whether this field is omitted from persisted draft payloads.
   final bool excludeFromDraft;
@@ -216,11 +240,14 @@ class _SmartDropdownFieldState<T> extends State<SmartDropdownField<T>> {
       initialValue: widget.initialValue,
       validators: _validators,
       asyncValidators: widget.asyncValidators,
+      asyncValidationDebounce: widget.asyncValidationDebounce,
       autovalidateMode: dropdownAutovalidateMode,
       errorAnimation: widget.errorAnimation,
       errorAnimationBuilder: widget.errorAnimationBuilder,
       excludeFromDraft: widget.excludeFromDraft,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
+      resultValueTransformer: widget.resultValueTransformer,
       focusNode: widget.focusNode,
       builder: (context, field) {
         _observeField(field);
@@ -242,11 +269,13 @@ class _SmartDropdownFieldState<T> extends State<SmartDropdownField<T>> {
           disabledHint: widget.disabledHint,
           isExpanded: widget.isExpanded,
           menuMaxHeight: widget.menuMaxHeight,
-          onTap: () => _handleMenuOpened(
-            validateWhenMenuCloses:
-                configuredMode == AutovalidateMode.onUnfocus,
-          ),
-          onChanged: field.enabled
+          onTap: field.enabled && !field.readOnly
+              ? () => _handleMenuOpened(
+                  validateWhenMenuCloses:
+                      configuredMode == AutovalidateMode.onUnfocus,
+                )
+              : null,
+          onChanged: field.enabled && !field.readOnly
               ? (value) => _handleSelection(field, value)
               : null,
         );

@@ -7,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import '../animation/smart_error_animation.dart';
 import '../draft/smart_form_draft.dart';
 import '../fields/smart_field_view_item.dart';
+import '../localization/smart_form_messages.dart';
 import '../theme/smart_form_theme.dart';
 import '../validation/smart_validation_context.dart';
 import 'smart_api_errors.dart';
@@ -16,6 +17,14 @@ import 'smart_form_controller.dart';
 import 'smart_form_field_status.dart';
 import 'smart_form_result.dart';
 import 'smart_form_scope.dart';
+import 'smart_submission.dart';
+
+/// Reveals a tab, step, accordion, or other container before field navigation.
+typedef SmartFormRevealField = FutureOr<void> Function(String fieldName);
+
+/// Builds a separator between item-driven fields.
+typedef SmartFormItemSeparatorBuilder =
+    Widget Function(BuildContext context, int precedingIndex);
 
 /// Coordinates the smart fields below it.
 class SmartForm extends StatefulWidget {
@@ -23,7 +32,10 @@ class SmartForm extends StatefulWidget {
   const SmartForm({
     this.children = const [],
     this.items = const [],
+    this.child,
     this.itemSeparatorHeight = 0,
+    this.itemSeparatorBuilder,
+    this.padding,
     this.controller,
     this.draftController,
     this.scrollToFirstError,
@@ -36,7 +48,10 @@ class SmartForm extends StatefulWidget {
     this.dismissKeyboardOnTapOutside = true,
     this.unfocusOnKeyboardDismiss = true,
     this.onKeyboardVisibilityChanged,
+    this.onRevealField,
     this.onSubmit,
+    this.onSubmitResult,
+    this.messages,
     this.autovalidateMode = AutovalidateMode.onUnfocus,
     this.mainAxisSize = MainAxisSize.min,
     super.key,
@@ -47,6 +62,106 @@ class SmartForm extends StatefulWidget {
        assert(
          draftController == null || controller != null,
          'A SmartForm with draftController also needs a controller.',
+       ),
+       assert(
+         onSubmit == null || onSubmitResult == null,
+         'Provide onSubmit or onSubmitResult, not both.',
+       );
+
+  /// Creates a form around an arbitrary application-owned layout.
+  const SmartForm.withChild({
+    required Widget child,
+    SmartFormController? controller,
+    SmartFormDraftController? draftController,
+    bool? scrollToFirstError,
+    bool? focusFirstError,
+    Duration? scrollDuration,
+    Curve? scrollCurve,
+    double? scrollAlignment,
+    SmartErrorAnimation? errorAnimation,
+    SmartErrorAnimationBuilder? errorAnimationBuilder,
+    bool dismissKeyboardOnTapOutside = true,
+    bool unfocusOnKeyboardDismiss = true,
+    ValueChanged<bool>? onKeyboardVisibilityChanged,
+    SmartFormRevealField? onRevealField,
+    SmartFormSubmitCallback? onSubmit,
+    SmartFormResultSubmitCallback? onSubmitResult,
+    SmartFormMessages? messages,
+    AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
+    EdgeInsetsGeometry? padding,
+    Key? key,
+  }) : this(
+         key: key,
+         child: child,
+         controller: controller,
+         draftController: draftController,
+         scrollToFirstError: scrollToFirstError,
+         focusFirstError: focusFirstError,
+         scrollDuration: scrollDuration,
+         scrollCurve: scrollCurve,
+         scrollAlignment: scrollAlignment,
+         errorAnimation: errorAnimation,
+         errorAnimationBuilder: errorAnimationBuilder,
+         dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
+         unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
+         onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+         onRevealField: onRevealField,
+         onSubmit: onSubmit,
+         onSubmitResult: onSubmitResult,
+         messages: messages,
+         autovalidateMode: autovalidateMode,
+         padding: padding,
+       );
+
+  /// Creates a vertically arranged form from declarative field [items].
+  const SmartForm.withItems({
+    required List<SmartFieldViewItem> items,
+    SmartFormController? controller,
+    SmartFormDraftController? draftController,
+    double itemSeparatorHeight = 0,
+    SmartFormItemSeparatorBuilder? itemSeparatorBuilder,
+    EdgeInsetsGeometry? padding,
+    bool? scrollToFirstError,
+    bool? focusFirstError,
+    Duration? scrollDuration,
+    Curve? scrollCurve,
+    double? scrollAlignment,
+    SmartErrorAnimation? errorAnimation,
+    SmartErrorAnimationBuilder? errorAnimationBuilder,
+    bool dismissKeyboardOnTapOutside = true,
+    bool unfocusOnKeyboardDismiss = true,
+    ValueChanged<bool>? onKeyboardVisibilityChanged,
+    SmartFormRevealField? onRevealField,
+    SmartFormSubmitCallback? onSubmit,
+    SmartFormResultSubmitCallback? onSubmitResult,
+    SmartFormMessages? messages,
+    AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
+    MainAxisSize mainAxisSize = MainAxisSize.min,
+    Key? key,
+  }) : this(
+         key: key,
+         items: items,
+         controller: controller,
+         draftController: draftController,
+         itemSeparatorHeight: itemSeparatorHeight,
+         itemSeparatorBuilder: itemSeparatorBuilder,
+         padding: padding,
+         scrollToFirstError: scrollToFirstError,
+         focusFirstError: focusFirstError,
+         scrollDuration: scrollDuration,
+         scrollCurve: scrollCurve,
+         scrollAlignment: scrollAlignment,
+         errorAnimation: errorAnimation,
+         errorAnimationBuilder: errorAnimationBuilder,
+         dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
+         unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
+         onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+         onRevealField: onRevealField,
+         onSubmit: onSubmit,
+         onSubmitResult: onSubmitResult,
+         messages: messages,
+         autovalidateMode: autovalidateMode,
+         mainAxisSize: mainAxisSize,
        );
 
   /// Fields and other widgets laid out vertically in registration order.
@@ -55,8 +170,17 @@ class SmartForm extends StatefulWidget {
   /// Declarative field items laid out vertically in their list order.
   final List<SmartFieldViewItem> items;
 
+  /// Arbitrary application-owned layout containing smart fields.
+  final Widget? child;
+
   /// Vertical space inserted between consecutive [items].
   final double itemSeparatorHeight;
+
+  /// Optional separator builder, taking precedence over separator height.
+  final SmartFormItemSeparatorBuilder? itemSeparatorBuilder;
+
+  /// Optional padding around the form content.
+  final EdgeInsetsGeometry? padding;
 
   /// Optional controller for imperative access to this form.
   final SmartFormController? controller;
@@ -94,11 +218,20 @@ class SmartForm extends StatefulWidget {
   /// Called when the keyboard changes between visible and hidden.
   final ValueChanged<bool>? onKeyboardVisibilityChanged;
 
+  /// Reveals a containing tab, step, or expansion panel before navigation.
+  final SmartFormRevealField? onRevealField;
+
   /// Called by [SmartFormController.submit] after validation succeeds.
   ///
   /// When this callback completes successfully, an attached draft controller is
   /// marked submitted so its stored draft is cleared.
   final SmartFormSubmitCallback? onSubmit;
+
+  /// Structured submit callback with automatic handled-error application.
+  final SmartFormResultSubmitCallback? onSubmitResult;
+
+  /// Application-owned messages, or null to use [SmartFormTheme].
+  final SmartFormMessages? messages;
 
   /// Default automatic validation mode for descendant smart fields.
   ///
@@ -271,7 +404,10 @@ class SmartFormState extends State<SmartForm>
 
   @override
   SmartValidationContext get validationContext {
-    return SmartValidationContext(_registry.values);
+    return SmartValidationContext(
+      _registry.values,
+      messages: widget.messages ?? SmartFormTheme.of(context).messages,
+    );
   }
 
   @override
@@ -330,7 +466,13 @@ class SmartFormState extends State<SmartForm>
       isValid: firstInvalidField == null,
       values: await _registry.resolveResultValues(),
       errors: errors,
+      firstInvalidFieldName: firstInvalidField?.name,
     );
+  }
+
+  @override
+  Future<bool> validateField(String name) {
+    return _fieldNamed(name).validate(context: validationContext);
   }
 
   @override
@@ -342,13 +484,61 @@ class SmartFormState extends State<SmartForm>
       scrollToError: scrollToError,
       focusFirstError: focusFirstError,
     );
-    final onSubmit = widget.onSubmit;
-    if (!result.isValid || onSubmit == null) {
+    if (!result.isValid) {
       return result;
     }
-    await onSubmit(result.values);
-    await widget.draftController?.markSubmitted();
+    await performSubmit(result);
     return result;
+  }
+
+  @override
+  Future<SmartSubmissionResult> performSubmit(SmartFormResult result) async {
+    final structured = widget.onSubmitResult;
+    if (structured != null) {
+      var outcome = await structured(result);
+      if (!outcome.accepted) {
+        if (outcome.fieldErrors.isNotEmpty) {
+          await setErrors(
+            outcome.fieldErrors,
+            scrollToFirstError: outcome.scrollToFirstError,
+          );
+        }
+        final response = outcome.response;
+        if (response != null) {
+          final parsed = await setErrorsFromResponse(
+            response,
+            extractor: outcome.extractor,
+            fieldAliases: outcome.fieldAliases,
+            scrollToFirstError:
+                outcome.scrollToFirstError && outcome.fieldErrors.isEmpty,
+          );
+          outcome = SmartSubmissionResult.rejected(
+            response: response,
+            fieldErrors: <String, String>{
+              ...outcome.fieldErrors,
+              ...parsed.appliedErrors,
+            },
+            generalErrors: <String>[
+              ...outcome.generalErrors,
+              ...parsed.generalErrors,
+            ],
+            extractor: outcome.extractor,
+            fieldAliases: outcome.fieldAliases,
+            scrollToFirstError: outcome.scrollToFirstError,
+          );
+        }
+        return outcome;
+      }
+      await widget.draftController?.markSubmitted();
+      return outcome;
+    }
+
+    final legacy = widget.onSubmit;
+    if (legacy != null) {
+      await legacy(result.values);
+      await widget.draftController?.markSubmitted();
+    }
+    return const SmartSubmissionResult.success();
   }
 
   Future<void> _navigateToInvalidField(
@@ -359,6 +549,8 @@ class SmartFormState extends State<SmartForm>
     if (!scroll && !focus) {
       return;
     }
+
+    await widget.onRevealField?.call(field.name);
 
     // Error widgets can change field heights. Navigate only after that layout
     // has completed, and tolerate a field disappearing during the frame.
@@ -384,12 +576,19 @@ class SmartFormState extends State<SmartForm>
   }
 
   @override
-  void setValue<T>(String name, T? value) {
-    _fieldNamed(name).setValue(value);
+  void setValue<T>(
+    String name,
+    T? value, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    _fieldNamed(name).setValue(value, options: options);
   }
 
   @override
-  void patchValue(Map<String, Object?> values) {
+  void patchValue(
+    Map<String, Object?> values, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
     final fields = <SmartFieldHandle<Object?>>[];
     for (final name in values.keys) {
       fields.add(_fieldNamed(name));
@@ -398,6 +597,7 @@ class SmartFormState extends State<SmartForm>
       fields[index].setValue(
         values.values.elementAt(index),
         notifyDependents: false,
+        options: options,
       );
     }
     _revalidateDependents(values.keys);
@@ -543,12 +743,22 @@ class SmartFormState extends State<SmartForm>
 
   @override
   Future<void> focusField(String name) async {
+    final reveal = widget.onRevealField;
+    if (reveal != null) {
+      await reveal(name);
+      await WidgetsBinding.instance.endOfFrame;
+    }
     _fieldNamed(name).focus();
   }
 
   @override
-  Future<void> scrollToField(String name) {
-    return _fieldNamed(name).scrollIntoView();
+  Future<void> scrollToField(String name) async {
+    final reveal = widget.onRevealField;
+    if (reveal != null) {
+      await reveal(name);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    await _fieldNamed(name).scrollIntoView();
   }
 
   @override
@@ -598,11 +808,19 @@ class SmartFormState extends State<SmartForm>
 
   @override
   Widget build(BuildContext context) {
-    assert(
-      widget.children.isEmpty || widget.items.isEmpty,
-      'Provide children or items, not both.',
-    );
+    final sourceCount = <bool>[
+      widget.children.isNotEmpty,
+      widget.items.isNotEmpty,
+      widget.child != null,
+    ].where((configured) => configured).length;
+    if (sourceCount > 1) {
+      throw FlutterError('Provide child, children, or items; not multiple.');
+    }
     final theme = SmartFormTheme.of(context);
+    Widget content = _buildFormContent(context);
+    if (widget.padding case final padding?) {
+      content = Padding(padding: padding, child: content);
+    }
     return TapRegion(
       onTapOutside: widget.dismissKeyboardOnTapOutside
           ? (_) => _unfocusForm()
@@ -621,13 +839,22 @@ class SmartFormState extends State<SmartForm>
             errorAnimationBuilder:
                 widget.errorAnimationBuilder ?? theme.errorAnimationBuilder,
             autovalidateMode: widget.autovalidateMode,
-            child: Column(
-              mainAxisSize: widget.mainAxisSize,
-              children: _buildFormChildren(context),
-            ),
+            messages: widget.messages ?? theme.messages,
+            child: content,
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFormContent(BuildContext context) {
+    final child = widget.child;
+    if (child != null) {
+      return SmartFormOrderScope(order: 0, child: child);
+    }
+    return Column(
+      mainAxisSize: widget.mainAxisSize,
+      children: _buildFormChildren(context),
     );
   }
 
@@ -635,7 +862,9 @@ class SmartFormState extends State<SmartForm>
     if (widget.items.isNotEmpty) {
       return <Widget>[
         for (var index = 0; index < widget.items.length; index++) ...<Widget>[
-          if (index > 0) SizedBox(height: widget.itemSeparatorHeight),
+          if (index > 0)
+            widget.itemSeparatorBuilder?.call(context, index - 1) ??
+                SizedBox(height: widget.itemSeparatorHeight),
           SmartFormOrderScope(
             key: ValueKey<String>(widget.items[index].name),
             order: index,

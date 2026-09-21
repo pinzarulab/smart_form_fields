@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../localization/smart_form_messages.dart';
 
 /// Behavior defaults for descendant `SmartForm` widgets.
 @immutable
@@ -14,6 +15,7 @@ class SmartFormThemeData {
     this.scrollAlignment = 0.2,
     this.errorAnimation = SmartErrorAnimation.shake,
     this.errorAnimationBuilder,
+    this.messages = const SmartDefaultFormMessages(),
   });
 
   /// Whether forms scroll to their first invalid field by default.
@@ -37,6 +39,9 @@ class SmartFormThemeData {
   /// Default custom animation wrapper applied when a field receives an error.
   final SmartErrorAnimationBuilder? errorAnimationBuilder;
 
+  /// Application-owned validation messages.
+  final SmartFormMessages messages;
+
   /// Returns a copy with the supplied behavior defaults replaced.
   SmartFormThemeData copyWith({
     bool? scrollToFirstError,
@@ -46,6 +51,7 @@ class SmartFormThemeData {
     double? scrollAlignment,
     SmartErrorAnimation? errorAnimation,
     SmartErrorAnimationBuilder? errorAnimationBuilder,
+    SmartFormMessages? messages,
   }) {
     return SmartFormThemeData(
       scrollToFirstError: scrollToFirstError ?? this.scrollToFirstError,
@@ -56,6 +62,7 @@ class SmartFormThemeData {
       errorAnimation: errorAnimation ?? this.errorAnimation,
       errorAnimationBuilder:
           errorAnimationBuilder ?? this.errorAnimationBuilder,
+      messages: messages ?? this.messages,
     );
   }
 
@@ -69,7 +76,8 @@ class SmartFormThemeData {
             other.scrollCurve == scrollCurve &&
             other.scrollAlignment == scrollAlignment &&
             other.errorAnimation == errorAnimation &&
-            identical(other.errorAnimationBuilder, errorAnimationBuilder);
+            identical(other.errorAnimationBuilder, errorAnimationBuilder) &&
+            identical(other.messages, messages);
   }
 
   @override
@@ -81,6 +89,7 @@ class SmartFormThemeData {
     scrollAlignment,
     errorAnimation,
     errorAnimationBuilder,
+    messages,
   );
 }
 

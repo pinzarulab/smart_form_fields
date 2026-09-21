@@ -362,7 +362,13 @@ class _TestFieldState extends State<_TestField>
   bool get enabled => widget.enabled;
 
   @override
+  bool get readOnly => false;
+
+  @override
   bool get excludeFromDraft => false;
+
+  @override
+  bool get includeInResult => true;
 
   @override
   bool get isValid => _error == null;
@@ -371,10 +377,20 @@ class _TestFieldState extends State<_TestField>
   bool get isDirty => false;
 
   @override
+  bool get isTouched => false;
+
+  @override
+  bool get hasValidated => _error != null;
+
+  @override
   bool get isValidating => false;
 
   @override
   String? get errorText => _error;
+
+  @override
+  SmartFieldErrorSource? get errorSource =>
+      _error == null ? null : SmartFieldErrorSource.validation;
 
   @override
   Set<String> get dependencies => const <String>{};
@@ -431,7 +447,11 @@ class _TestFieldState extends State<_TestField>
   Future<Object?> resolveResultValue() async => _value;
 
   @override
-  void setValue(Object? value, {bool notifyDependents = true}) {
+  void setValue(
+    Object? value, {
+    bool notifyDependents = true,
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
     _value = value;
     _error = null;
   }

@@ -7,7 +7,11 @@ import 'smart_validator.dart';
 typedef _SyncRunner =
     String? Function(Object? value, SmartValidationContext context);
 typedef _AsyncRunner =
-    Future<String?> Function(Object? value, SmartValidationContext context);
+    Future<String?> Function(
+      Object? value,
+      SmartValidationContext context,
+      SmartAsyncValidationContext asyncContext,
+    );
 
 final class _SyncMetadata {
   const _SyncMetadata(this.dependencies, this.run);
@@ -45,6 +49,20 @@ SmartValueValidator<T> createDependentValidator<T>({
   return placeholder;
 }
 
+SmartValueValidator<T> createContextValidator<T>(
+  SmartContextValidator<T> validator,
+) {
+  String? placeholder(T? value) {
+    return validator(value, SmartValidationContext(const <String, Object?>{}));
+  }
+
+  _syncMetadata[placeholder] = _SyncMetadata(
+    const <String>{},
+    (value, context) => validator(value as T?, context),
+  );
+  return placeholder;
+}
+
 SmartAsyncValidator<T> createDependentAsyncValidator<T>({
   required Iterable<String> dependsOn,
   required SmartContextAsyncValidator<T> validator,
@@ -59,7 +77,7 @@ SmartAsyncValidator<T> createDependentAsyncValidator<T>({
 
   _asyncMetadata[placeholder] = _AsyncMetadata(
     dependencies,
-    (value, context) => validator(value as T?, context),
+    (value, context, _) => validator(value as T?, context),
   );
   return placeholder;
 }
@@ -85,10 +103,16 @@ String? runSmartValidator<T>(
 Future<String?> runSmartAsyncValidator<T>(
   SmartAsyncValidator<T> validator,
   T? value,
-  SmartValidationContext context,
-) {
+  SmartValidationContext context, [
+  SmartAsyncValidationContext? asyncContext,
+]) {
   final metadata = _asyncMetadata[validator];
-  return metadata == null ? validator(value) : metadata.run(value, context);
+  final effectiveAsyncContext =
+      asyncContext ??
+      SmartAsyncValidationContext(form: context, isCurrent: () => true);
+  return metadata == null
+      ? validator(value)
+      : metadata.run(value, context, effectiveAsyncContext);
 }
 
 SmartValueValidator<T> adaptSmartValidator<T>(
@@ -98,10 +122,50 @@ SmartValueValidator<T> adaptSmartValidator<T>(
   if (metadata == null) {
     return (value) => validator(value);
   }
-  return createDependentValidator<T>(
-    dependsOn: metadata.dependencies,
-    validator: (value, context) => metadata.run(value, context),
+  String? placeholder(T? value) {
+    return metadata.run(
+      value,
+      SmartValidationContext(const <String, Object?>{}),
+    );
+  }
+
+  _syncMetadata[placeholder] = _SyncMetadata(
+    metadata.dependencies,
+    (value, context) => metadata.run(value, context),
   );
+  return placeholder;
+}
+
+SmartAsyncValidator<T> createControlledAsyncValidator<T>({
+  required Iterable<String> dependsOn,
+  required SmartControlledAsyncValidator<T> validator,
+}) {
+  final dependencies = <String>{};
+  for (final dependency in dependsOn) {
+    if (dependency.isEmpty) {
+      throw ArgumentError.value(
+        dependency,
+        'dependsOn',
+        'Names cannot be empty.',
+      );
+    }
+    dependencies.add(dependency);
+  }
+  Future<String?> placeholder(T? value) {
+    return validator(
+      value,
+      SmartAsyncValidationContext(
+        form: SmartValidationContext(const <String, Object?>{}),
+        isCurrent: () => true,
+      ),
+    );
+  }
+
+  _asyncMetadata[placeholder] = _AsyncMetadata(
+    Set<String>.unmodifiable(dependencies),
+    (value, _, asyncContext) => validator(value as T?, asyncContext),
+  );
+  return placeholder;
 }
 
 SmartAsyncValidator<T> adaptSmartAsyncValidator<T>(
@@ -111,10 +175,21 @@ SmartAsyncValidator<T> adaptSmartAsyncValidator<T>(
   if (metadata == null) {
     return (value) => validator(value);
   }
-  return createDependentAsyncValidator<T>(
-    dependsOn: metadata.dependencies,
-    validator: (value, context) => metadata.run(value, context),
+  Future<String?> placeholder(T? value) {
+    final context = SmartValidationContext(const <String, Object?>{});
+    return metadata.run(
+      value,
+      context,
+      SmartAsyncValidationContext(form: context, isCurrent: () => true),
+    );
+  }
+
+  _asyncMetadata[placeholder] = _AsyncMetadata(
+    metadata.dependencies,
+    (value, context, asyncContext) =>
+        metadata.run(value, context, asyncContext),
   );
+  return placeholder;
 }
 
 Set<String> dependenciesOfAsyncValidator(Object validator) {

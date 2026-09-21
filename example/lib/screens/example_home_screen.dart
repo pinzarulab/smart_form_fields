@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'class_schema_form_screen.dart';
 import 'controller_playground_screen.dart';
 import 'custom_animation_screen.dart';
+import 'developer_api_screen.dart';
 import 'items_form_screen.dart';
 import 'json_form_screen.dart';
 import 'registration_form_screen.dart';
@@ -36,6 +37,15 @@ class ExampleHomeScreen extends StatelessWidget {
                   'Reusable fields, sync and async validation, validation '
                   'timing, first-error navigation, reset, and submission.',
               onTap: () => _open(context, const RegistrationExamplePage()),
+            ),
+            const SizedBox(height: 12),
+            _DemoCard(
+              icon: Icons.code_outlined,
+              title: 'Typed developer API',
+              description:
+                  'Typed field IDs, model adapters, live field state, custom '
+                  'pickers, conditional retention, and structured submission.',
+              onTap: () => _open(context, const DeveloperApiExamplePage()),
             ),
             const SizedBox(height: 12),
             _DemoCard(

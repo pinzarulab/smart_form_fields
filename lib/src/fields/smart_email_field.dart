@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
 import '../validation/smart_validators.dart';
 import 'smart_text_field.dart';
+import 'smart_form_field.dart';
 
 /// A text field configured for email input and validation.
 class SmartEmailField extends StatefulWidget {
   /// Creates an email field registered as [name].
   const SmartEmailField({
-    required this.name,
+    String? name,
+    this.fieldId,
     this.initialValue,
     this.controller,
     this.focusNode,
     this.required = false,
-    this.requiredMessage = 'This field is required.',
-    this.invalidEmailMessage = 'Enter a valid email address.',
+    this.requiredMessage,
+    this.invalidEmailMessage,
     this.validators = const [],
     this.asyncValidators = const [],
     this.asyncValidationDebounce,
@@ -24,16 +27,28 @@ class SmartEmailField extends StatefulWidget {
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.textInputAction,
     this.onChanged,
     this.onSubmitted,
+    this.resultValueTransformer,
     this.excludeFromDraft = false,
     super.key,
-  });
+  }) : assert(
+         (name != null && name.length > 0) || fieldId != null,
+         'Provide a non-empty name or SmartFieldId.',
+       ),
+       _name = name;
 
   /// Unique form field name.
-  final String name;
+  final String? _name;
+
+  /// Optional typed identity for this field.
+  final SmartFieldId<String>? fieldId;
+
+  /// Unique form field name.
+  String get name => _name ?? fieldId!.name;
 
   /// Initial email used when no [controller] is supplied.
   final String? initialValue;
@@ -48,10 +63,10 @@ class SmartEmailField extends StatefulWidget {
   final bool required;
 
   /// Message returned when [required] validation fails.
-  final String requiredMessage;
+  final String? requiredMessage;
 
   /// Message returned when email validation fails.
-  final String invalidEmailMessage;
+  final String? invalidEmailMessage;
 
   /// Additional synchronous validators run after built-in validators.
   final List<SmartValidator> validators;
@@ -74,6 +89,9 @@ class SmartEmailField extends StatefulWidget {
   /// Whether the field accepts input and participates in validation.
   final bool enabled;
 
+  /// Whether input is locked while validation remains enabled.
+  final bool readOnly;
+
   /// Material input decoration.
   final InputDecoration decoration;
 
@@ -85,6 +103,9 @@ class SmartEmailField extends StatefulWidget {
 
   /// Called when the platform submits the email field.
   final ValueChanged<String>? onSubmitted;
+
+  /// Optionally transforms submitted email text.
+  final SmartResultValueTransformer<String>? resultValueTransformer;
 
   /// Whether this field is omitted from persisted draft payloads.
   final bool excludeFromDraft;
@@ -136,6 +157,7 @@ class _SmartEmailFieldState extends State<SmartEmailField> {
       errorAnimation: widget.errorAnimation,
       errorAnimationBuilder: widget.errorAnimationBuilder,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
       decoration: widget.decoration,
       keyboardType: TextInputType.emailAddress,
       textInputAction: widget.textInputAction,
@@ -143,6 +165,7 @@ class _SmartEmailFieldState extends State<SmartEmailField> {
       enableSuggestions: false,
       onChanged: widget.onChanged,
       onSubmitted: widget.onSubmitted,
+      resultValueTransformer: widget.resultValueTransformer,
       excludeFromDraft: widget.excludeFromDraft,
     );
   }

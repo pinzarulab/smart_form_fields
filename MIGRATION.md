@@ -1,3 +1,30 @@
+# Migrating to 2.0.0
+
+Version 2 keeps existing string names, map results, widget constructors, and
+legacy submit callbacks working. Applications can migrate incrementally.
+
+Use typed field IDs where the same name appears more than once:
+
+```dart
+const emailField = SmartFieldId<String>('email');
+
+SmartEmailField(fieldId: emailField);
+final email = result.valueFor(emailField);
+```
+
+Use `controller.setInitialValues()` instead of `patchValue()` when loading an
+edit model that should become the clean reset baseline. Use
+`SmartFormAdapter<T>` and `SmartModelForm<T>` when typed model binding is
+desired.
+
+Legacy `onSubmit(values)` remains supported. Migrate to `onSubmitResult` only
+when automatic backend error application and structured submission phases are
+needed.
+
+Built-in validator defaults now resolve through `SmartForm.messages`. Explicit
+messages behave exactly as before. The fallback text remains compatible, and
+the package still bundles no translation catalogs.
+
 # Migrating to 1.0.0
 
 ## String validators

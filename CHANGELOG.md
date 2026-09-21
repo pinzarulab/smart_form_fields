@@ -1,3 +1,30 @@
+## 2.0.0
+
+* Add typed `SmartFieldId<T>` identities across fields, results, validation
+  dependencies, model adapters, and controller field access.
+* Add `SmartFieldAccessor<T>`, field-specific listenables, richer field status,
+  validation-error origins, and `SmartFormValueBuilder`/`SmartFormStatusBuilder`.
+* Add clean initial-value and model loading through `setInitialValues`,
+  `setInitialModel`, and configurable `SmartValueUpdateOptions`.
+* Add `SmartFormAdapter<T>`, `SmartTypedFormResult<T>`, and `SmartModelForm<T>`
+  for typed decoding, initial values, and submission.
+* Add structured submission phases/results, automatic backend field-error
+  application, fieldless errors, and application-owned submit-button builders.
+* Add `SmartPickerField<T>` for bottom sheets, dialogs, and other custom picker
+  presentations without manual form-state plumbing.
+* Add view items for email, password, date, dropdown, picker, and conditional
+  fields, plus consistent read-only, async-debounce, and result-transform APIs.
+* Add conditional state/value policies, multiple dependency metadata, and
+  snake_case JSON/class visibility definitions.
+* Add arbitrary-layout forms, item separator builders, padding, named form
+  constructors, and reveal hooks for tabs, steps, and accordions.
+* Add application-owned `SmartFormMessages` resolution without bundled
+  translation catalogs.
+* Add reusable schema registries, full-response schema extraction, schema
+  versions, unknown-field fallbacks, read-only fields, and conditional schemas.
+* Add cooperative async-validation cancellation context and controlled async
+  validators.
+
 ## 1.8.0
 
 * Add typed/text helpers to `SmartFormResult`, including `valueOf<T>()`,

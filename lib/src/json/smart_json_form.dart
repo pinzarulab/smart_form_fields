@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../animation/smart_error_animation.dart';
 import '../fields/smart_date_field.dart';
+import '../fields/smart_conditional_field.dart';
 import '../fields/smart_dropdown_field.dart';
 import '../fields/smart_email_field.dart';
 import '../fields/smart_password_field.dart';
@@ -10,6 +11,7 @@ import '../fields/smart_text_field.dart';
 import '../form/smart_form.dart';
 import '../form/smart_form_controller.dart';
 import '../form/smart_form_key.dart';
+import '../localization/smart_form_messages.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_async_validators.dart';
 import '../validation/smart_validator.dart';
@@ -33,6 +35,29 @@ typedef SmartValidatorDefinitionBuilder =
 /// Converts an application or API model into a package field definition.
 typedef SmartClassFieldMapper<T> = SmartFieldDefinition Function(T model);
 
+/// Reusable custom field, validator, and async-validator registrations.
+final class SmartFormSchemaRegistry {
+  /// Creates a schema extension registry shared by multiple forms.
+  const SmartFormSchemaRegistry({
+    this.fieldBuilders = const {},
+    this.validatorBuilders = const {},
+    this.asyncValidators = const {},
+    this.unknownFieldBuilder,
+  });
+
+  /// Application-specific field builders keyed by schema type.
+  final Map<String, SmartFieldDefinitionBuilder> fieldBuilders;
+
+  /// Application-specific validator builders keyed by schema type.
+  final Map<String, SmartValidatorDefinitionBuilder> validatorBuilders;
+
+  /// Executable asynchronous validators keyed by schema name.
+  final Map<String, SmartAsyncValidator<Object?>> asyncValidators;
+
+  /// Optional fallback used when no field type registration exists.
+  final SmartFieldDefinitionBuilder? unknownFieldBuilder;
+}
+
 /// Builds a [SmartForm] from an API-provided JSON schema.
 class SmartSchemaForm extends StatelessWidget {
   /// Creates a form from an already parsed [schema].
@@ -43,6 +68,7 @@ class SmartSchemaForm extends StatelessWidget {
     this.customFieldBuilders = const {},
     this.customValidatorBuilders = const {},
     this.asyncValidators = const {},
+    this.registry = const SmartFormSchemaRegistry(),
     this.spacing = 16,
     this.scrollToFirstError,
     this.focusFirstError,
@@ -50,6 +76,8 @@ class SmartSchemaForm extends StatelessWidget {
     this.dismissKeyboardOnTapOutside = true,
     this.unfocusOnKeyboardDismiss = true,
     this.onKeyboardVisibilityChanged,
+    this.onRevealField,
+    this.messages,
     this.autovalidateMode = AutovalidateMode.onUnfocus,
     super.key,
   });
@@ -63,6 +91,7 @@ class SmartSchemaForm extends StatelessWidget {
     Map<String, SmartValidatorDefinitionBuilder> customValidatorBuilders =
         const {},
     Map<String, SmartAsyncValidator<Object?>> asyncValidators = const {},
+    SmartFormSchemaRegistry registry = const SmartFormSchemaRegistry(),
     double spacing = 16,
     bool? scrollToFirstError,
     bool? focusFirstError,
@@ -70,6 +99,8 @@ class SmartSchemaForm extends StatelessWidget {
     bool dismissKeyboardOnTapOutside = true,
     bool unfocusOnKeyboardDismiss = true,
     ValueChanged<bool>? onKeyboardVisibilityChanged,
+    SmartFormRevealField? onRevealField,
+    SmartFormMessages? messages,
     AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
     Key? key,
   }) {
@@ -81,6 +112,7 @@ class SmartSchemaForm extends StatelessWidget {
       customFieldBuilders: customFieldBuilders,
       customValidatorBuilders: customValidatorBuilders,
       asyncValidators: asyncValidators,
+      registry: registry,
       spacing: spacing,
       scrollToFirstError: scrollToFirstError,
       focusFirstError: focusFirstError,
@@ -88,6 +120,58 @@ class SmartSchemaForm extends StatelessWidget {
       dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
       unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
       onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+      onRevealField: onRevealField,
+      messages: messages,
+      autovalidateMode: autovalidateMode,
+    );
+  }
+
+  /// Extracts a schema from a complete decoded API response.
+  factory SmartSchemaForm.fromResponse({
+    required Object? response,
+    SmartFormSchemaExtractor? extractor,
+    List<Object> path = const <Object>[],
+    SmartFormController? controller,
+    SmartFormKey? formKey,
+    Map<String, SmartFieldDefinitionBuilder> customFieldBuilders = const {},
+    Map<String, SmartValidatorDefinitionBuilder> customValidatorBuilders =
+        const {},
+    Map<String, SmartAsyncValidator<Object?>> asyncValidators = const {},
+    SmartFormSchemaRegistry registry = const SmartFormSchemaRegistry(),
+    double spacing = 16,
+    bool? scrollToFirstError,
+    bool? focusFirstError,
+    SmartErrorAnimation? errorAnimation,
+    bool dismissKeyboardOnTapOutside = true,
+    bool unfocusOnKeyboardDismiss = true,
+    ValueChanged<bool>? onKeyboardVisibilityChanged,
+    SmartFormRevealField? onRevealField,
+    SmartFormMessages? messages,
+    AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
+    Key? key,
+  }) {
+    return SmartSchemaForm(
+      key: key,
+      schema: SmartFormSchema.fromResponse(
+        response,
+        extractor: extractor,
+        path: path,
+      ),
+      controller: controller,
+      formKey: formKey,
+      customFieldBuilders: customFieldBuilders,
+      customValidatorBuilders: customValidatorBuilders,
+      asyncValidators: asyncValidators,
+      registry: registry,
+      spacing: spacing,
+      scrollToFirstError: scrollToFirstError,
+      focusFirstError: focusFirstError,
+      errorAnimation: errorAnimation,
+      dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
+      unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
+      onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+      onRevealField: onRevealField,
+      messages: messages,
       autovalidateMode: autovalidateMode,
     );
   }
@@ -107,6 +191,7 @@ class SmartSchemaForm extends StatelessWidget {
     Map<String, SmartValidatorDefinitionBuilder> customValidatorBuilders =
         const {},
     Map<String, SmartAsyncValidator<Object?>> asyncValidators = const {},
+    SmartFormSchemaRegistry registry = const SmartFormSchemaRegistry(),
     double spacing = 16,
     bool? scrollToFirstError,
     bool? focusFirstError,
@@ -114,6 +199,8 @@ class SmartSchemaForm extends StatelessWidget {
     bool dismissKeyboardOnTapOutside = true,
     bool unfocusOnKeyboardDismiss = true,
     ValueChanged<bool>? onKeyboardVisibilityChanged,
+    SmartFormRevealField? onRevealField,
+    SmartFormMessages? messages,
     AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
     Key? key,
   }) {
@@ -132,10 +219,13 @@ class SmartSchemaForm extends StatelessWidget {
       customFieldBuilders: customFieldBuilders,
       customValidatorBuilders: customValidatorBuilders,
       asyncValidators: asyncValidators,
+      registry: registry,
       spacing: spacing,
       dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
       unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
       onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+      onRevealField: onRevealField,
+      messages: messages,
       autovalidateMode: autovalidateMode,
     );
   }
@@ -158,6 +248,9 @@ class SmartSchemaForm extends StatelessWidget {
   /// Executable asynchronous validators keyed by schema name.
   final Map<String, SmartAsyncValidator<Object?>> asyncValidators;
 
+  /// Reusable schema extension registry.
+  final SmartFormSchemaRegistry registry;
+
   /// Vertical space inserted between generated fields.
   final double spacing;
 
@@ -179,6 +272,12 @@ class SmartSchemaForm extends StatelessWidget {
   /// Called when keyboard visibility changes.
   final ValueChanged<bool>? onKeyboardVisibilityChanged;
 
+  /// Reveals containing UI before first-error navigation.
+  final SmartFormRevealField? onRevealField;
+
+  /// Application-owned validation messages.
+  final SmartFormMessages? messages;
+
   /// Default automatic validation timing for generated fields.
   final AutovalidateMode autovalidateMode;
 
@@ -196,6 +295,8 @@ class SmartSchemaForm extends StatelessWidget {
       dismissKeyboardOnTapOutside: dismissKeyboardOnTapOutside,
       unfocusOnKeyboardDismiss: unfocusOnKeyboardDismiss,
       onKeyboardVisibilityChanged: onKeyboardVisibilityChanged,
+      onRevealField: onRevealField,
+      messages: messages,
       autovalidateMode: autovalidateMode,
       children: <Widget>[
         for (var index = 0; index < fields.length; index++) ...<Widget>[
@@ -207,6 +308,45 @@ class SmartSchemaForm extends StatelessWidget {
   }
 
   Widget _buildField(BuildContext context, SmartFieldDefinition definition) {
+    final field = _buildUnconditionalField(context, definition);
+    final rawCondition = definition.properties['visible_when'];
+    if (rawCondition == null) {
+      return field;
+    }
+    if (rawCondition is! Map<Object?, Object?>) {
+      throw FormatException(
+        '${definition.name}.visible_when must be an object.',
+      );
+    }
+    final dependency = rawCondition['field'];
+    if (dependency is! String || dependency.isEmpty) {
+      throw FormatException(
+        '${definition.name}.visible_when.field must be a non-empty string.',
+      );
+    }
+    final behaviorName =
+        definition.stringValue('hidden_value_behavior') ?? 'remove';
+    final behavior = switch (behaviorName) {
+      'remove' => SmartHiddenFieldBehavior.remove,
+      'preserve' => SmartHiddenFieldBehavior.preserve,
+      'preserve_and_exclude' => SmartHiddenFieldBehavior.preserveAndExclude,
+      _ => throw FormatException(
+        '${definition.name}.hidden_value_behavior has unsupported value '
+        '"$behaviorName".',
+      ),
+    };
+    return SmartConditionalField(
+      dependsOn: dependency,
+      hiddenBehavior: behavior,
+      condition: (value, _) => value == rawCondition['equals'],
+      child: field,
+    );
+  }
+
+  Widget _buildUnconditionalField(
+    BuildContext context,
+    SmartFieldDefinition definition,
+  ) {
     final validators = _validatorsFor(definition);
     final asyncValidators = _asyncValidatorsFor(definition);
     final decoration = InputDecoration(
@@ -215,9 +355,12 @@ class SmartSchemaForm extends StatelessWidget {
       helperText: definition.stringValue('helper_text'),
     );
     final enabled = definition.boolValue('enabled', fallback: true);
+    final readOnly = definition.boolValue('read_only', fallback: false);
+    final asyncValidationDebounce = definition.intValue(
+      'async_validation_debounce_ms',
+    );
     final required = definition.boolValue('required', fallback: false);
-    final requiredMessage =
-        definition.stringValue('required_message') ?? 'This field is required.';
+    final requiredMessage = definition.stringValue('required_message');
     final autovalidateMode = _autovalidateMode(definition);
 
     switch (definition.type) {
@@ -226,6 +369,7 @@ class SmartSchemaForm extends StatelessWidget {
           name: definition.name,
           initialValue: definition.stringValue('initial_value'),
           enabled: enabled,
+          readOnly: readOnly,
           decoration: decoration,
           maxLines: definition.intValue('max_lines') ?? 1,
           autovalidateMode: autovalidateMode,
@@ -234,21 +378,26 @@ class SmartSchemaForm extends StatelessWidget {
             ..._adaptValidators<String>(validators),
           ],
           asyncValidators: _adaptAsyncValidators<String>(asyncValidators),
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       case 'email':
         return SmartEmailField(
           name: definition.name,
           initialValue: definition.stringValue('initial_value'),
           enabled: enabled,
+          readOnly: readOnly,
           required: required,
           requiredMessage: requiredMessage,
-          invalidEmailMessage:
-              definition.stringValue('invalid_email_message') ??
-              'Enter a valid email address.',
+          invalidEmailMessage: definition.stringValue('invalid_email_message'),
           decoration: decoration,
           autovalidateMode: autovalidateMode,
           validators: _adaptValidators<String>(validators),
           asyncValidators: _adaptAsyncValidators<String>(asyncValidators),
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       case 'phone':
         return SmartPhoneField(
@@ -256,18 +405,23 @@ class SmartSchemaForm extends StatelessWidget {
           initialValue: definition.stringValue('initial_value'),
           countryCode: definition.stringValue('country_code'),
           enabled: enabled,
+          readOnly: readOnly,
           required: required,
           requiredMessage: requiredMessage,
           decoration: decoration,
           autovalidateMode: autovalidateMode,
           validators: _adaptValidators<String>(validators),
           asyncValidators: _adaptAsyncValidators<String>(asyncValidators),
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       case 'password':
         return SmartPasswordField(
           name: definition.name,
           initialValue: definition.stringValue('initial_value'),
           enabled: enabled,
+          readOnly: readOnly,
           required: required,
           requiredMessage: requiredMessage,
           minLength: definition.intValue('min_length'),
@@ -280,6 +434,9 @@ class SmartSchemaForm extends StatelessWidget {
           autovalidateMode: autovalidateMode,
           validators: _adaptValidators<String>(validators),
           asyncValidators: _adaptAsyncValidators<String>(asyncValidators),
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       case 'date':
         return SmartDateField(
@@ -288,12 +445,16 @@ class SmartSchemaForm extends StatelessWidget {
           firstDate: _dateValue(definition, 'first_date') ?? DateTime(1900),
           lastDate: _dateValue(definition, 'last_date') ?? DateTime(2100),
           enabled: enabled,
+          readOnly: readOnly,
           required: required,
           requiredMessage: requiredMessage,
           decoration: decoration,
           autovalidateMode: autovalidateMode,
           validators: _adaptValidators<DateTime>(validators),
           asyncValidators: _adaptAsyncValidators<DateTime>(asyncValidators),
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       case 'dropdown':
         final options = <_JsonOption>[
@@ -307,15 +468,22 @@ class SmartSchemaForm extends StatelessWidget {
               options.firstWhere((option) => option.value == value).label,
           initialValue: definition.properties['initial_value'],
           enabled: enabled,
+          readOnly: readOnly,
           required: required,
           requiredMessage: requiredMessage,
           decoration: decoration,
           autovalidateMode: autovalidateMode,
           validators: validators,
           asyncValidators: asyncValidators,
+          asyncValidationDebounce: asyncValidationDebounce == null
+              ? null
+              : Duration(milliseconds: asyncValidationDebounce),
         );
       default:
-        final builder = customFieldBuilders[definition.type];
+        final builder =
+            customFieldBuilders[definition.type] ??
+            registry.fieldBuilders[definition.type] ??
+            registry.unknownFieldBuilder;
         if (builder == null) {
           throw FlutterError(
             'No JSON field builder is registered for type '
@@ -345,12 +513,10 @@ class SmartSchemaForm extends StatelessWidget {
     switch (definition.type) {
       case 'required':
         return SmartValueValidators.required<Object?>(
-          message: definition.message ?? 'This field is required.',
+          message: definition.message,
         );
       case 'email':
-        final validator = SmartValidators.email(
-          message: definition.message ?? 'Enter a valid email address.',
-        );
+        final validator = SmartValidators.email(message: definition.message);
         return (value) => validator(value as String?);
       case 'length':
         return SmartValueValidators.length<Object?>(
@@ -372,13 +538,12 @@ class SmartSchemaForm extends StatelessWidget {
       case 'pattern':
         final validator = SmartValidators.pattern(
           RegExp(definition.requireString('pattern')),
-          message:
-              definition.message ?? 'Enter a value in the required format.',
+          message: definition.message,
         );
         return (value) => validator(value as String?);
       case 'number':
         return SmartValueValidators.number<Object?>(
-          message: definition.message ?? 'Enter a valid number.',
+          message: definition.message,
         );
       case 'min':
         return SmartValueValidators.min<Object?>(
@@ -393,7 +558,7 @@ class SmartSchemaForm extends StatelessWidget {
       case 'matches_field':
         return SmartValueValidators.matchesField<Object?>(
           definition.requireString('field'),
-          message: definition.message ?? 'Values do not match.',
+          message: definition.message,
         );
       case 'required_when':
         if (!definition.properties.containsKey('equals')) {
@@ -402,10 +567,12 @@ class SmartSchemaForm extends StatelessWidget {
         return SmartValueValidators.requiredWhen<Object?>(
           field: definition.requireString('field'),
           equals: definition.properties['equals'],
-          message: definition.message ?? 'This field is required.',
+          message: definition.message,
         );
       default:
-        final builder = customValidatorBuilders[definition.type];
+        final builder =
+            customValidatorBuilders[definition.type] ??
+            registry.validatorBuilders[definition.type];
         if (builder == null) {
           throw FlutterError(
             'No JSON validator builder is registered for type '
@@ -430,6 +597,7 @@ class SmartSchemaForm extends StatelessWidget {
   ) {
     final validator =
         asyncValidators[name] ??
+        registry.asyncValidators[name] ??
         (throw FlutterError('No async validator is registered for "$name".'));
     final dependencies = <String>{
       ...dependenciesOfAsyncValidator(validator),

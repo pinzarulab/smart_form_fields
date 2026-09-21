@@ -4,8 +4,8 @@ A behavior-first Flutter form package for field registration, synchronous and
 asynchronous validation, value collection, and navigation to the first invalid
 field.
 
-The 0.1 release provides a tested foundation for production Flutter forms. The
-public API remains pre-1.0 and may evolve through documented minor releases.
+Version 2 provides typed field identities and model binding while preserving
+the original string-name and map-based APIs.
 
 ## Installation
 
@@ -43,6 +43,79 @@ if (result.isValid) {
   print(result.text('email'));
 }
 ```
+
+### Typed fields and direct state access
+
+Use `SmartFieldId<T>` to remove repeated string names and runtime casts from
+widget-authored forms:
+
+```dart
+const emailField = SmartFieldId<String>('email');
+const birthDateField = SmartFieldId<DateTime>('birth_date');
+
+SmartEmailField(fieldId: emailField, required: true);
+
+final email = result.valueFor(emailField);
+final error = result.errorOf(emailField);
+```
+
+`SmartFormController.field()` returns one stable typed accessor for live value,
+error, dirty, touched, validation, read-only, and async-validation state:
+
+```dart
+final email = controller.field(emailField);
+
+print(email.fieldValue);
+email.fieldValue = 'person@example.com';
+await email.validate();
+
+SmartFormValueBuilder<String>(
+  controller: controller,
+  field: emailField,
+  builder: (context, state, _) => Text('${state.value} ${state.errorText}'),
+);
+```
+
+### Loading initial edit data
+
+Use `setInitialValues` when API/model data should become a clean reset baseline.
+Unlike a normal patch, this does not mark fields dirty or touched:
+
+```dart
+controller.setInitialValues({
+  'email': profile.email,
+  'birth_date': profile.birthDate,
+});
+
+controller.patchValue({'email': 'changed@example.com'}); // dirty change
+```
+
+For custom behavior, pass `SmartValueUpdateOptions` to `setValue` or
+`patchValue`.
+
+### Typed model binding
+
+One adapter can load, validate, decode, and submit an application model:
+
+```dart
+final profileAdapter = SmartFormAdapter<Profile>(
+  fromValues: (values) => Profile(
+    email: values.get(emailField)!,
+    birthDate: values.get(birthDateField),
+  ),
+  toValues: (profile) => {
+    emailField: profile.email,
+    birthDateField: profile.birthDate,
+  },
+);
+
+controller.setInitialModel(profile, profileAdapter);
+final typed = await controller.validateAs(profileAdapter);
+final Profile? validProfile = typed.value;
+```
+
+`SmartModelForm<T>` also decodes values before invoking its typed submit
+callback.
 
 ### Validation timing
 
@@ -156,9 +229,18 @@ SmartForm(
 );
 ```
 
-Validation-message localization remains application-owned. Pass the desired
-message to a validator, for example
-`SmartValidators.required(message: 'Required')`.
+Validation-message localization remains application-owned. Pass a message
+directly or implement `SmartFormMessages` with the app's localization system:
+
+```dart
+SmartForm(
+  messages: AppSmartFormMessages(context),
+  children: [...],
+);
+```
+
+Built-in validators without an explicit message resolve against this object at
+validation time. The package does not bundle language catalogs.
 
 ## Form access and controller lifecycle
 
@@ -211,6 +293,18 @@ SmartEmailField(
 
 The debounce applies to automatic validation only. A submit-triggered
 `validate()` call starts immediately.
+
+Long-running validators can cooperate with cancellation:
+
+```dart
+final validator = SmartAsyncValidators.controlled<String>(
+  validator: (value, context) async {
+    final response = await repository.checkEmail(value);
+    context.throwIfCancelled();
+    return response.available ? null : 'Email is already registered';
+  },
+);
+```
 
 ## Cross-field dependencies
 
@@ -328,6 +422,21 @@ Render `field.errorText` in a custom widget and call `field.didChange` whenever
 its value changes. Use `field.isValidating` when the UI should expose async
 validation progress.
 
+For common bottom-sheet, dialog, and search-picker interactions,
+`SmartPickerField<T>` keeps that presentation app-owned while handling the form
+state automatically:
+
+```dart
+SmartPickerField<Country>(
+  name: 'country',
+  onPick: (context, current) => showCountryBottomSheet(context, current),
+  displayBuilder: (context, value, field) {
+    return Text(value?.localizedName ?? 'Choose country');
+  },
+  validators: [SmartValueValidators.required<Country>()],
+);
+```
+
 ## Forms from API model classes
 
 Use `SmartSchemaForm.fromClasses` when an API response has already been decoded
@@ -403,6 +512,33 @@ SmartSchemaForm.fromJson(
   },
 );
 ```
+
+When the schema is nested inside a complete API response, use automatic
+discovery, an explicit path, or an extractor:
+
+```dart
+SmartSchemaForm.fromResponse(
+  response: decodedResponse,
+  path: const ['data', 'registration_form'],
+  controller: controller,
+);
+```
+
+Reuse custom types across screens through one registry:
+
+```dart
+final schemaRegistry = SmartFormSchemaRegistry(
+  fieldBuilders: {'country_picker': buildCountryPicker},
+  validatorBuilders: {'available': buildAvailabilityValidator},
+  asyncValidators: {'email_available': checkEmailAvailability},
+  unknownFieldBuilder: buildUnsupportedField,
+);
+```
+
+Schemas support `schema_version`, `read_only`,
+`async_validation_debounce_ms`, `visible_when`, and
+`hidden_value_behavior`. Class-defined fields expose the same visibility
+configuration through `SmartFieldVisibilityDefinition`.
 
 Example API response:
 
@@ -669,6 +805,10 @@ print(displayNameItem.text);
 For fully custom items, provide a `valueReader` if you want `item.value`,
 `item.valueAs<T>()`, or `item.text` to return the widget-owned value.
 
+Built-in item configurations are available for text, email, password, phone,
+date, dropdown, picker, and conditional fields. For reactive state, prefer
+`formController.field(typedFieldId)`; items primarily describe presentation.
+
 Use either `children` or `items` on one `SmartForm`. The existing `children`
 API remains unchanged.
 
@@ -805,6 +945,29 @@ SmartForm(
 For custom buttons or menu actions, call `await controller.submit()`. The
 controller exposes `isSubmitting`, `submissionError`, and `lastSubmitResult`.
 
+For backend validation, return a structured result. Field errors are applied
+automatically and fieldless messages remain available on the controller:
+
+```dart
+SmartForm(
+  controller: controller,
+  onSubmitResult: (result) async {
+    final response = await repository.register(result.values);
+    return response.ok
+        ? const SmartSubmissionResult.success()
+        : SmartSubmissionResult.rejected(response: response.body);
+  },
+  children: [...],
+);
+
+print(controller.submissionPhase);
+print(controller.submissionGeneralErrors);
+```
+
+Submission phases are `idle`, `validating`, `submitting`, `invalid`,
+`succeeded`, `rejected`, and `failed`. `SmartSubmitButton.builder` lets the app
+render any button or control instead of the default `FilledButton`.
+
 ## Conditional fields
 
 Use `SmartConditionalField` when a field should exist only while another field
@@ -832,6 +995,38 @@ SmartConditionalField(
 Conditional fields animate with a built-in fade and size transition by default.
 Use `transitionBuilder` when the application needs a custom animation.
 
+Hidden state can instead be retained:
+
+```dart
+SmartConditionalField(
+  dependsOn: accountTypeField,
+  dependsOnFields: {countryField},
+  hiddenBehavior: SmartHiddenFieldBehavior.preserveAndExclude,
+  condition: (_, values) =>
+      values.valueFor(accountTypeField) == AccountType.business,
+  child: SmartTextField(name: 'company_name'),
+);
+```
+
+`remove` disposes and excludes hidden content. `preserve` retains and returns
+its value while skipping hidden validation. `preserveAndExclude` retains state
+but omits hidden values from results and drafts.
+
+## Custom layouts and reveal navigation
+
+Use `SmartForm.withChild` when fields live inside an app-owned layout, or
+`SmartForm.withItems` for a vertical item list. `onRevealField` runs before
+scroll/focus navigation, allowing a screen to open the correct tab, form step,
+or expansion panel:
+
+```dart
+SmartForm.withChild(
+  controller: controller,
+  onRevealField: steps.openStepContaining,
+  child: PageView(children: formSteps),
+);
+```
+
 ## Example application
 
 The [example](example/) directory contains five Material 3 screens: a complete
@@ -849,12 +1044,10 @@ flutter run
 
 ## Current status
 
-The package foundation, form key/controller API, immutable result model,
-registry, generic custom field, text field, core sync/async validation,
-built-in validators, error animations, and first-error navigation are
-implemented. The initial reusable field set now includes text, email, password,
-phone, date, and generic dropdown fields. Shared form behavior can be configured
-with `SmartFormTheme`, and `SmartSchemaForm` can build the same fields from API
-JSON or Dart definition classes. Cross-field sync and async validators use
-explicit dependency metadata and read-only form snapshots. Bundled
-validation-message localization is intentionally out of scope.
+Version 2 includes typed field IDs, typed model adapters, direct field
+accessors, clean edit-form baselines, structured submissions, custom pickers,
+conditional value policies, arbitrary layouts, reveal navigation, reusable
+schema registries, full-response schema extraction, draft persistence, and
+cooperative async cancellation. String names, result maps, direct widget
+constructors, and legacy submit callbacks remain supported. Validation-message
+localization stays application-owned; no translated catalogs are bundled.

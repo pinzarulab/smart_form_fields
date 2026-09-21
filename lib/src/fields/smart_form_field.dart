@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 
 import '../animation/smart_error_animation.dart';
 import '../form/smart_field_handle.dart';
+import '../form/smart_field_id.dart';
+import '../form/smart_form_field_status.dart';
 import '../form/smart_form_scope.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validation_context.dart';
@@ -24,12 +26,14 @@ typedef SmartResultValueTransformer<T> = FutureOr<Object?> Function(T? value);
 class SmartFormField<T> extends StatefulWidget {
   /// Creates a custom field registered with the closest [SmartForm].
   const SmartFormField({
-    required this.name,
+    String? name,
+    this.fieldId,
     required this.builder,
     this.initialValue,
     this.validators = const [],
     this.asyncValidators = const [],
     this.enabled = true,
+    this.readOnly = false,
     this.focusNode,
     this.autovalidateMode,
     this.asyncValidationDebounce,
@@ -38,10 +42,20 @@ class SmartFormField<T> extends StatefulWidget {
     this.resultValueTransformer,
     this.excludeFromDraft = false,
     super.key,
-  }) : assert(name.length > 0, 'A field name cannot be empty.');
+  }) : assert(
+         (name != null && name.length > 0) || fieldId != null,
+         'Provide a non-empty name or SmartFieldId.',
+       ),
+       _name = name;
 
   /// Unique name used for registration, values, and errors.
-  final String name;
+  final String? _name;
+
+  /// Optional typed identity for this field.
+  final SmartFieldId<T>? fieldId;
+
+  /// Unique name used for registration, values, and errors.
+  String get name => _name ?? fieldId!.name;
 
   /// Value restored by [SmartFieldController.reset].
   final T? initialValue;
@@ -57,6 +71,9 @@ class SmartFormField<T> extends StatefulWidget {
 
   /// Whether the field accepts changes and participates in validation.
   final bool enabled;
+
+  /// Whether user input is locked while the value remains registered.
+  final bool readOnly;
 
   /// Optional caller-owned focus node.
   final FocusNode? focusNode;
@@ -98,9 +115,12 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   final GlobalKey _anchorKey = GlobalKey();
 
   SmartFormScope? _formScope;
+  SmartFieldActivityScope? _activityScope;
   late FocusNode _focusNode;
   late T? _value;
+  late T? _initialValue;
   String? _errorText;
+  SmartFieldErrorSource? _errorSource;
   bool _isValidating = false;
   bool _isDirty = false;
   bool _isTouched = false;
@@ -126,16 +146,25 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   String? get errorText => _errorText;
 
   @override
+  SmartFieldErrorSource? get errorSource => _errorSource;
+
+  @override
   Set<String> get dependencies => dependenciesOfValidators(<Object>[
     ...widget.validators,
     ...widget.asyncValidators,
   ]);
 
   @override
-  bool get enabled => widget.enabled;
+  bool get enabled => widget.enabled && (_activityScope?.active ?? true);
+
+  @override
+  bool get readOnly => widget.readOnly;
 
   @override
   bool get excludeFromDraft => widget.excludeFromDraft;
+
+  @override
+  bool get includeInResult => _activityScope?.includeInResult ?? true;
 
   @override
   bool get isValid => _errorText == null;
@@ -150,12 +179,16 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   bool get isTouched => _isTouched;
 
   @override
+  bool get hasValidated => _hasValidated;
+
+  @override
   FocusNode get focusNode => _focusNode;
 
   @override
   void initState() {
     super.initState();
     _value = widget.initialValue;
+    _initialValue = widget.initialValue;
     _focusNode = widget.focusNode ?? FocusNode();
     _wasFocused = _focusNode.hasFocus;
     _focusNode.addListener(_handleFocusChanged);
@@ -170,6 +203,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     super.didChangeDependencies();
     final previousMode = _formScope == null ? null : _effectiveAutovalidateMode;
     final nextScope = SmartFormScope.of(context);
+    _activityScope = SmartFieldActivityScope.maybeOf(context);
     if (!identical(_formScope?.registrar, nextScope.registrar)) {
       _formScope?.registrar.unregisterField(this);
       _formScope = nextScope;
@@ -227,7 +261,9 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     if (!_isDirty && oldWidget.initialValue != widget.initialValue) {
       _validationGeneration++;
       _value = widget.initialValue;
+      _initialValue = widget.initialValue;
       _errorText = null;
+      _errorSource = null;
       _isValidating = false;
       _hasValidated = false;
     }
@@ -274,9 +310,17 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   }
 
   @override
-  void didChange(T? value) => _changeValue(value, notifyDependents: true);
+  void didChange(T? value) => _changeValue(
+    value,
+    notifyDependents: true,
+    options: SmartValueUpdateOptions.patch,
+  );
 
-  void _changeValue(T? value, {required bool notifyDependents}) {
+  void _changeValue(
+    T? value, {
+    required bool notifyDependents,
+    required SmartValueUpdateOptions options,
+  }) {
     final shouldRevalidateExistingError =
         _effectiveAutovalidateMode ==
             AutovalidateMode.onUserInteractionIfError &&
@@ -284,15 +328,27 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     _validationGeneration++;
     setState(() {
       _value = value;
-      _errorText = null;
+      if (options.updateInitialValue) {
+        _initialValue = value;
+      }
+      if (options.clearError) {
+        _errorText = null;
+        _errorSource = null;
+      }
       _isValidating = false;
-      _isDirty = true;
-      _isTouched = true;
+      _isDirty = options.markDirty && value != _initialValue;
+      _isTouched = options.markTouched;
+      if (options.updateInitialValue) {
+        _hasValidated = false;
+      }
     });
     if (notifyDependents) {
       _formScope?.registrar.fieldValueChanged(this);
     }
-    if (widget.enabled &&
+    if (widget.enabled && options.validate) {
+      unawaited(validate());
+    } else if (widget.enabled &&
+        options.autovalidate &&
         (_effectiveAutovalidateMode == AutovalidateMode.always ||
             _effectiveAutovalidateMode == AutovalidateMode.onUserInteraction ||
             shouldRevalidateExistingError)) {
@@ -306,8 +362,12 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   }
 
   @override
-  void setValue(T? value, {bool notifyDependents = true}) {
-    _changeValue(value, notifyDependents: notifyDependents);
+  void setValue(
+    T? value, {
+    bool notifyDependents = true,
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    _changeValue(value, notifyDependents: notifyDependents, options: options);
   }
 
   @override
@@ -427,7 +487,15 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
       }
 
       for (final validator in widget.asyncValidators) {
-        final error = await runSmartAsyncValidator(validator, value, context);
+        final error = await runSmartAsyncValidator(
+          validator,
+          value,
+          context,
+          SmartAsyncValidationContext(
+            form: context,
+            isCurrent: () => _isCurrentGeneration(generation),
+          ),
+        );
         if (!_isCurrentGeneration(generation)) {
           return isValid;
         }
@@ -439,6 +507,8 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
 
       _applyValidationResult(generation, null, animateError: false);
       return true;
+    } on SmartAsyncValidationCancelled {
+      return isValid;
     } catch (_) {
       if (_isCurrentGeneration(generation)) {
         setState(() => _isValidating = false);
@@ -458,6 +528,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     }
     setState(() {
       _errorText = error;
+      _errorSource = error == null ? null : SmartFieldErrorSource.validation;
       _isValidating = false;
     });
     _formScope?.registrar.fieldStateChanged(this);
@@ -499,8 +570,9 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   void reset() {
     _validationGeneration++;
     setState(() {
-      _value = widget.initialValue;
+      _value = _initialValue;
       _errorText = null;
+      _errorSource = null;
       _isValidating = false;
       _isDirty = false;
       _isTouched = false;
@@ -514,6 +586,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     _validationGeneration++;
     setState(() {
       _errorText = null;
+      _errorSource = null;
       _isValidating = false;
     });
     _formScope?.registrar.fieldStateChanged(this);
@@ -524,6 +597,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     _validationGeneration++;
     setState(() {
       _errorText = error;
+      _errorSource = SmartFieldErrorSource.server;
       _isValidating = false;
       _isTouched = true;
       _hasValidated = true;

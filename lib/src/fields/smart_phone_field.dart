@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
 import '../validation/smart_validators.dart';
@@ -57,7 +58,7 @@ final class SmartPhoneFieldViewItem extends SmartFieldViewItem {
     this.countrySelectorSeparator,
     this.countrySelectorPadding = const EdgeInsets.symmetric(horizontal: 12),
     this.required = false,
-    this.requiredMessage = 'This field is required.',
+    this.requiredMessage,
     this.validators = const [],
     this.asyncValidators = const [],
     this.asyncValidationDebounce,
@@ -65,6 +66,7 @@ final class SmartPhoneFieldViewItem extends SmartFieldViewItem {
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.inputFormatters,
     this.valueParser,
@@ -102,7 +104,7 @@ final class SmartPhoneFieldViewItem extends SmartFieldViewItem {
   final bool required;
 
   /// Required-field validation message.
-  final String requiredMessage;
+  final String? requiredMessage;
 
   /// Additional synchronous validators.
   final List<SmartValidator> validators;
@@ -124,6 +126,9 @@ final class SmartPhoneFieldViewItem extends SmartFieldViewItem {
 
   /// Whether the field is enabled.
   final bool enabled;
+
+  /// Whether input is locked while validation remains enabled.
+  final bool readOnly;
 
   /// Material input decoration.
   final InputDecoration decoration;
@@ -158,6 +163,7 @@ class SmartPhoneField extends StatefulWidget {
   const SmartPhoneField({
     this.item,
     String? name,
+    this.fieldId,
     String? initialValue,
     TextEditingController? controller,
     FocusNode? focusNode,
@@ -175,6 +181,7 @@ class SmartPhoneField extends StatefulWidget {
     SmartErrorAnimation? errorAnimation,
     SmartErrorAnimationBuilder? errorAnimationBuilder,
     bool? enabled,
+    bool? readOnly,
     InputDecoration? decoration,
     List<TextInputFormatter>? inputFormatters,
     SmartPhoneValueParser? valueParser,
@@ -184,8 +191,8 @@ class SmartPhoneField extends StatefulWidget {
     bool? excludeFromDraft,
     super.key,
   }) : assert(
-         item != null || (name != null && name.length > 0),
-         'Provide a SmartPhoneFieldViewItem or a non-empty name.',
+         item != null || (name != null && name.length > 0) || fieldId != null,
+         'Provide a SmartPhoneFieldViewItem, name, or SmartFieldId.',
        ),
        _name = name,
        _initialValue = initialValue,
@@ -205,6 +212,7 @@ class SmartPhoneField extends StatefulWidget {
        _errorAnimation = errorAnimation,
        _errorAnimationBuilder = errorAnimationBuilder,
        _enabled = enabled,
+       _readOnly = readOnly,
        _decoration = decoration,
        _inputFormatters = inputFormatters,
        _valueParser = valueParser,
@@ -216,10 +224,13 @@ class SmartPhoneField extends StatefulWidget {
   /// Optional immutable configuration used to create this field.
   final SmartPhoneFieldViewItem? item;
 
+  /// Optional typed identity for this field's live formatted text.
+  final SmartFieldId<String>? fieldId;
+
   final String? _name;
 
   /// Unique form field name.
-  String get name => _name ?? item!.name;
+  String get name => _name ?? fieldId?.name ?? item!.name;
 
   final String? _initialValue;
 
@@ -287,8 +298,7 @@ class SmartPhoneField extends StatefulWidget {
   final String? _requiredMessage;
 
   /// Message returned when [required] validation fails.
-  String get requiredMessage =>
-      _requiredMessage ?? item?.requiredMessage ?? 'This field is required.';
+  String? get requiredMessage => _requiredMessage ?? item?.requiredMessage;
 
   final List<SmartValidator>? _validators;
 
@@ -330,6 +340,11 @@ class SmartPhoneField extends StatefulWidget {
 
   /// Whether the field accepts input and participates in validation.
   bool get enabled => _enabled ?? item?.enabled ?? true;
+
+  final bool? _readOnly;
+
+  /// Whether input is locked while validation remains enabled.
+  bool get readOnly => _readOnly ?? item?.readOnly ?? false;
 
   final InputDecoration? _decoration;
 
@@ -409,19 +424,22 @@ class _SmartPhoneFieldState extends State<SmartPhoneField> {
 
   Widget _buildCountrySelector({required bool insideField}) {
     final separator = widget.countrySelectorSeparator;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        if (insideField)
-          Padding(
-            padding: widget.countrySelectorPadding,
-            child: widget.countrySelector,
-          )
-        else
-          widget.countrySelector!,
-        if (separator != null)
-          SizedBox(height: insideField ? 32 : 56, child: separator),
-      ],
+    return IgnorePointer(
+      ignoring: !widget.enabled || widget.readOnly,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (insideField)
+            Padding(
+              padding: widget.countrySelectorPadding,
+              child: widget.countrySelector,
+            )
+          else
+            widget.countrySelector!,
+          if (separator != null)
+            SizedBox(height: insideField ? 32 : 56, child: separator),
+        ],
+      ),
     );
   }
 
@@ -438,6 +456,7 @@ class _SmartPhoneFieldState extends State<SmartPhoneField> {
       errorAnimation: widget.errorAnimation,
       errorAnimationBuilder: widget.errorAnimationBuilder,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
       decoration: decoration ?? widget.decoration,
       keyboardType: TextInputType.phone,
       textInputAction: widget.textInputAction,

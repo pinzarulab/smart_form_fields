@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
 import '../validation/smart_validators.dart';
@@ -15,20 +16,23 @@ typedef SmartDateFormatter =
 class SmartDateField extends StatefulWidget {
   /// Creates a date-picker field registered as [name].
   const SmartDateField({
-    required this.name,
+    String? name,
+    this.fieldId,
     required this.firstDate,
     required this.lastDate,
     this.initialValue,
     this.currentDate,
     this.focusNode,
     this.required = false,
-    this.requiredMessage = 'This field is required.',
+    this.requiredMessage,
     this.validators = const [],
     this.asyncValidators = const [],
+    this.asyncValidationDebounce,
     this.autovalidateMode,
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.selectableDayPredicate,
     this.initialEntryMode = DatePickerEntryMode.calendar,
@@ -39,12 +43,23 @@ class SmartDateField extends StatefulWidget {
     this.confirmText,
     this.dateFormatter,
     this.onChanged,
+    this.resultValueTransformer,
     this.excludeFromDraft = false,
     super.key,
-  });
+  }) : assert(
+         (name != null && name.length > 0) || fieldId != null,
+         'Provide a non-empty name or SmartFieldId.',
+       ),
+       _name = name;
 
   /// Unique form field name.
-  final String name;
+  final String? _name;
+
+  /// Optional typed identity for this field.
+  final SmartFieldId<DateTime>? fieldId;
+
+  /// Unique form field name.
+  String get name => _name ?? fieldId!.name;
 
   /// Initial selected date.
   final DateTime? initialValue;
@@ -65,13 +80,16 @@ class SmartDateField extends StatefulWidget {
   final bool required;
 
   /// Message returned when [required] validation fails.
-  final String requiredMessage;
+  final String? requiredMessage;
 
   /// Additional synchronous validators run after required validation.
   final List<SmartValueValidator<DateTime>> validators;
 
   /// Asynchronous validators run after synchronous validators pass.
   final List<SmartAsyncValidator<DateTime>> asyncValidators;
+
+  /// Debounce applied to automatic asynchronous validation.
+  final Duration? asyncValidationDebounce;
 
   /// Field-level automatic validation override.
   final AutovalidateMode? autovalidateMode;
@@ -84,6 +102,9 @@ class SmartDateField extends StatefulWidget {
 
   /// Whether the field opens the picker and participates in validation.
   final bool enabled;
+
+  /// Whether picker input is locked while validation remains enabled.
+  final bool readOnly;
 
   /// Material input decoration.
   final InputDecoration decoration;
@@ -114,6 +135,9 @@ class SmartDateField extends StatefulWidget {
 
   /// Called after the user selects a date.
   final ValueChanged<DateTime?>? onChanged;
+
+  /// Optionally transforms the selected date for submission.
+  final SmartResultValueTransformer<DateTime>? resultValueTransformer;
 
   /// Whether this field is omitted from persisted draft payloads.
   final bool excludeFromDraft;
@@ -193,7 +217,7 @@ class _SmartDateFieldState extends State<SmartDateField> {
     BuildContext context,
     SmartFieldController<DateTime> field,
   ) async {
-    if (!field.enabled) {
+    if (!field.enabled || field.readOnly) {
       return;
     }
     final selected = await showDatePicker(
@@ -226,11 +250,14 @@ class _SmartDateFieldState extends State<SmartDateField> {
           : DateUtils.dateOnly(widget.initialValue!),
       validators: _validators,
       asyncValidators: widget.asyncValidators,
+      asyncValidationDebounce: widget.asyncValidationDebounce,
       autovalidateMode: widget.autovalidateMode,
       errorAnimation: widget.errorAnimation,
       errorAnimationBuilder: widget.errorAnimationBuilder,
       excludeFromDraft: widget.excludeFromDraft,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
+      resultValueTransformer: widget.resultValueTransformer,
       focusNode: widget.focusNode,
       builder: (context, field) {
         _syncText(context, field.value);
@@ -245,7 +272,9 @@ class _SmartDateFieldState extends State<SmartDateField> {
                 widget.decoration.suffixIcon ??
                 const Icon(Icons.calendar_today_outlined),
           ),
-          onTap: field.enabled ? () => _pickDate(context, field) : null,
+          onTap: field.enabled && !field.readOnly
+              ? () => _pickDate(context, field)
+              : null,
         );
       },
     );

@@ -3,8 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'smart_api_errors.dart';
+import 'smart_field_id.dart';
+import 'smart_form_adapter.dart';
 import 'smart_form_field_status.dart';
 import 'smart_form_result.dart';
+import 'smart_submission.dart';
 
 /// Called after a form validates successfully during submission.
 typedef SmartFormSubmitCallback =
@@ -33,14 +36,23 @@ abstract interface class SmartFormControllerDelegate {
     bool? focusFirstError,
   });
 
+  /// Validates one named field.
+  Future<bool> validateField(String name);
+
   /// Validates the form and runs its submit callback when valid.
   Future<SmartFormResult> submit({bool? scrollToError, bool? focusFirstError});
 
+  /// Runs the configured callback for an already valid [result].
+  Future<SmartSubmissionResult> performSubmit(SmartFormResult result);
+
   /// Changes one field value.
-  void setValue<T>(String name, T? value);
+  void setValue<T>(String name, T? value, {SmartValueUpdateOptions options});
 
   /// Changes multiple field values atomically.
-  void patchValue(Map<String, Object?> values);
+  void patchValue(
+    Map<String, Object?> values, {
+    SmartValueUpdateOptions options,
+  });
 
   /// Resets every field.
   void reset();
@@ -74,11 +86,16 @@ abstract interface class SmartFormControllerDelegate {
 /// Imperative access to a mounted smart form.
 final class SmartFormController extends ChangeNotifier {
   SmartFormControllerDelegate? _delegate;
+  final Map<String, _SmartFieldAccessorBase> _fieldAccessors =
+      <String, _SmartFieldAccessorBase>{};
   bool _disposed = false;
   bool _isSubmitting = false;
   Future<SmartFormResult>? _activeSubmission;
   SmartFormResult? _lastSubmitResult;
   Object? _submissionError;
+  SmartSubmissionPhase _submissionPhase = SmartSubmissionPhase.idle;
+  SmartSubmissionResult? _lastSubmissionOutcome;
+  List<String> _submissionGeneralErrors = const <String>[];
 
   /// Whether this controller is attached to a mounted form.
   bool get isAttached => _delegate != null;
@@ -91,6 +108,15 @@ final class SmartFormController extends ChangeNotifier {
 
   /// Last error thrown by the form submit callback.
   Object? get submissionError => _submissionError;
+
+  /// Current structured submission phase.
+  SmartSubmissionPhase get submissionPhase => _submissionPhase;
+
+  /// Last structured application submission outcome.
+  SmartSubmissionResult? get lastSubmissionOutcome => _lastSubmissionOutcome;
+
+  /// Last fieldless backend/application messages.
+  List<String> get submissionGeneralErrors => _submissionGeneralErrors;
 
   /// Returns an immutable snapshot of current registered field values.
   Map<String, Object?> get values => _requireDelegate().values;
@@ -120,6 +146,26 @@ final class SmartFormController extends ChangeNotifier {
   /// Returns field [name] as [T], or null when its value is null.
   T? valueOf<T>(String name) => _requireDelegate().valueOf<T>(name);
 
+  /// Returns the value for a typed [field].
+  T? valueFor<T>(SmartFieldId<T> field) => valueOf<T>(field.name);
+
+  /// Returns a stable typed accessor for [field].
+  SmartFieldAccessor<T> field<T>(SmartFieldId<T> field) {
+    final existing = _fieldAccessors[field.name];
+    if (existing != null) {
+      if (existing.valueType != T) {
+        throw StateError(
+          'Field "${field.name}" was already accessed as '
+          '${existing.valueType}, not $T.',
+        );
+      }
+      return existing as SmartFieldAccessor<T>;
+    }
+    final accessor = SmartFieldAccessor<T>._(this, field);
+    _fieldAccessors[field.name] = accessor;
+    return accessor;
+  }
+
   /// Validates every enabled field and optionally navigates to the first error.
   Future<SmartFormResult> validate({
     bool? scrollToError,
@@ -129,6 +175,27 @@ final class SmartFormController extends ChangeNotifier {
       scrollToError: scrollToError,
       focusFirstError: focusFirstError,
     );
+  }
+
+  /// Validates and decodes a successful result with [adapter].
+  Future<SmartTypedFormResult<T>> validateAs<T>(
+    SmartFormAdapter<T> adapter, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) async {
+    final result = await validate(
+      scrollToError: scrollToError,
+      focusFirstError: focusFirstError,
+    );
+    return SmartTypedFormResult<T>(
+      result: result,
+      value: result.isValid ? adapter.decode(result) : null,
+    );
+  }
+
+  /// Validates one named field immediately.
+  Future<bool> validateField(String name) {
+    return _requireDelegate().validateField(name);
   }
 
   /// Validates the form, prevents duplicate concurrent submissions, and runs
@@ -147,13 +214,39 @@ final class SmartFormController extends ChangeNotifier {
   }
 
   /// Changes the value of field [name].
-  void setValue<T>(String name, T? value) {
-    _requireDelegate().setValue<T>(name, value);
+  void setValue<T>(
+    String name,
+    T? value, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    _requireDelegate().setValue<T>(name, value, options: options);
+  }
+
+  /// Changes a typed [field] value.
+  void setFieldValue<T>(
+    SmartFieldId<T> field,
+    T? value, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    setValue<T>(field.name, value, options: options);
   }
 
   /// Changes multiple field values after validating every supplied name.
-  void patchValue(Map<String, Object?> values) {
-    _requireDelegate().patchValue(values);
+  void patchValue(
+    Map<String, Object?> values, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    _requireDelegate().patchValue(values, options: options);
+  }
+
+  /// Loads API/model values as a clean reset baseline.
+  void setInitialValues(Map<String, Object?> values) {
+    patchValue(values, options: SmartValueUpdateOptions.initial);
+  }
+
+  /// Loads [model] as a clean reset baseline through [adapter].
+  void setInitialModel<T>(T model, SmartFormAdapter<T> adapter) {
+    setInitialValues(adapter.encode(model));
   }
 
   /// Restores every field to its initial value and clears its state.
@@ -218,6 +311,10 @@ final class SmartFormController extends ChangeNotifier {
   @override
   void dispose() {
     _delegate?.removeFormListener(_handleFormChanged);
+    for (final accessor in _fieldAccessors.values) {
+      accessor.disposeFromOwner();
+    }
+    _fieldAccessors.clear();
     _disposed = true;
     _delegate = null;
     super.dispose();
@@ -250,7 +347,20 @@ final class SmartFormController extends ChangeNotifier {
     }
   }
 
-  void _handleFormChanged() => notifyListeners();
+  void _handleFormChanged() {
+    for (final accessor in _fieldAccessors.values) {
+      accessor.refresh();
+    }
+    notifyListeners();
+  }
+
+  SmartFieldSnapshot<T> _snapshot<T>(String name) {
+    final status = _requireDelegate().fieldStatuses[name];
+    if (status == null) {
+      throw ArgumentError.value(name, 'name', 'No registered field.');
+    }
+    return SmartFieldSnapshot<T>.fromStatus(status);
+  }
 
   Future<SmartFormResult> _submit({
     bool? scrollToError,
@@ -258,16 +368,35 @@ final class SmartFormController extends ChangeNotifier {
   }) async {
     _isSubmitting = true;
     _submissionError = null;
+    _lastSubmissionOutcome = null;
+    _submissionGeneralErrors = const <String>[];
+    _submissionPhase = SmartSubmissionPhase.validating;
     notifyListeners();
     try {
-      final result = await _requireDelegate().submit(
+      final delegate = _requireDelegate();
+      final result = await delegate.validate(
         scrollToError: scrollToError,
         focusFirstError: focusFirstError,
       );
       _lastSubmitResult = result;
+      if (!result.isValid) {
+        _submissionPhase = SmartSubmissionPhase.invalid;
+        return result;
+      }
+      _submissionPhase = SmartSubmissionPhase.submitting;
+      notifyListeners();
+      final outcome = await delegate.performSubmit(result);
+      _lastSubmissionOutcome = outcome;
+      _submissionGeneralErrors = List<String>.unmodifiable(
+        outcome.generalErrors,
+      );
+      _submissionPhase = outcome.accepted
+          ? SmartSubmissionPhase.succeeded
+          : SmartSubmissionPhase.rejected;
       return result;
     } catch (error) {
       _submissionError = error;
+      _submissionPhase = SmartSubmissionPhase.failed;
       rethrow;
     } finally {
       _isSubmitting = false;
@@ -285,4 +414,80 @@ final class SmartFormController extends ChangeNotifier {
           'SmartFormController is not attached to a mounted SmartForm.',
         ));
   }
+}
+
+abstract interface class _SmartFieldAccessorBase {
+  Type get valueType;
+
+  void refresh();
+
+  void disposeFromOwner();
+}
+
+/// Typed value and state access for one registered field.
+final class SmartFieldAccessor<T>
+    implements ValueListenable<SmartFieldSnapshot<T>>, _SmartFieldAccessorBase {
+  SmartFieldAccessor._(this._form, this.id)
+    : _notifier = ValueNotifier<SmartFieldSnapshot<T>>(
+        _form._snapshot<T>(id.name),
+      );
+
+  final SmartFormController _form;
+
+  /// Typed field identity.
+  final SmartFieldId<T> id;
+
+  final ValueNotifier<SmartFieldSnapshot<T>> _notifier;
+
+  @override
+  Type get valueType => T;
+
+  /// Current typed field state.
+  @override
+  SmartFieldSnapshot<T> get value => _notifier.value;
+
+  /// Current field value.
+  T? get fieldValue => value.value;
+
+  /// Changes the current field value.
+  set fieldValue(T? next) => _form.setFieldValue<T>(id, next);
+
+  /// Changes the value with explicit interaction-state behavior.
+  void setValue(
+    T? next, {
+    SmartValueUpdateOptions options = SmartValueUpdateOptions.patch,
+  }) {
+    _form.setFieldValue<T>(id, next, options: options);
+  }
+
+  /// Scrolls to and focuses this field.
+  Future<void> focus() => _form.focusField(id.name);
+
+  /// Validates this field immediately.
+  Future<bool> validate() => _form.validateField(id.name);
+
+  /// Scrolls this field into view without changing focus.
+  Future<void> scrollIntoView() => _form.scrollToField(id.name);
+
+  @override
+  void addListener(VoidCallback listener) => _notifier.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _notifier.removeListener(listener);
+
+  @override
+  void refresh() {
+    if (!_form.isAttached ||
+        !_form._requireDelegate().fieldStatuses.containsKey(id.name)) {
+      return;
+    }
+    final next = _form._snapshot<T>(id.name);
+    if (next != _notifier.value) {
+      _notifier.value = next;
+    }
+  }
+
+  @override
+  void disposeFromOwner() => _notifier.dispose();
 }

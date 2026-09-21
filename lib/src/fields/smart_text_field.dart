@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../animation/smart_error_animation.dart';
+import '../form/smart_field_id.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validator.dart';
 import 'smart_field_view_item.dart';
@@ -28,6 +29,7 @@ final class SmartTextFieldViewItem extends SmartFieldViewItem {
     this.errorAnimation,
     this.errorAnimationBuilder,
     this.enabled = true,
+    this.readOnly = false,
     this.decoration = const InputDecoration(),
     this.keyboardType,
     this.textInputAction,
@@ -98,6 +100,9 @@ final class SmartTextFieldViewItem extends SmartFieldViewItem {
   /// Whether the text field accepts input and participates in validation.
   final bool enabled;
 
+  /// Whether input is locked while the field remains enabled.
+  final bool readOnly;
+
   /// Material input decoration.
   final InputDecoration decoration;
 
@@ -161,6 +166,7 @@ class SmartTextField extends StatefulWidget {
   const SmartTextField({
     this.item,
     String? name,
+    this.fieldId,
     String? initialValue,
     TextEditingController? controller,
     FocusNode? focusNode,
@@ -171,6 +177,7 @@ class SmartTextField extends StatefulWidget {
     SmartErrorAnimation? errorAnimation,
     SmartErrorAnimationBuilder? errorAnimationBuilder,
     bool? enabled,
+    bool? readOnly,
     InputDecoration? decoration,
     TextInputType? keyboardType,
     TextInputAction? textInputAction,
@@ -191,8 +198,8 @@ class SmartTextField extends StatefulWidget {
          'initialValue cannot be used with a TextEditingController.',
        ),
        assert(
-         item != null || (name != null && name.length > 0),
-         'Provide a SmartTextFieldViewItem or a non-empty name.',
+         item != null || (name != null && name.length > 0) || fieldId != null,
+         'Provide a SmartTextFieldViewItem, name, or SmartFieldId.',
        ),
        _name = name,
        _initialValue = initialValue,
@@ -205,6 +212,7 @@ class SmartTextField extends StatefulWidget {
        _errorAnimation = errorAnimation,
        _errorAnimationBuilder = errorAnimationBuilder,
        _enabled = enabled,
+       _readOnly = readOnly,
        _decoration = decoration,
        _keyboardType = keyboardType,
        _textInputAction = textInputAction,
@@ -223,10 +231,13 @@ class SmartTextField extends StatefulWidget {
   /// Optional immutable configuration used to create this field.
   final SmartTextFieldViewItem? item;
 
+  /// Optional typed identity for this field.
+  final SmartFieldId<String>? fieldId;
+
   final String? _name;
 
   /// Unique form field name.
-  String get name => _name ?? item!.name;
+  String get name => _name ?? fieldId?.name ?? item!.name;
 
   final String? _initialValue;
 
@@ -283,6 +294,11 @@ class SmartTextField extends StatefulWidget {
 
   /// Whether the text field accepts input and participates in validation.
   bool get enabled => _enabled ?? item?.enabled ?? true;
+
+  final bool? _readOnly;
+
+  /// Whether input is locked while validation remains enabled.
+  bool get readOnly => _readOnly ?? item?.readOnly ?? false;
 
   final InputDecoration? _decoration;
 
@@ -442,6 +458,7 @@ class _SmartTextFieldState extends State<SmartTextField> {
       resultValueTransformer: widget.resultValueTransformer,
       excludeFromDraft: widget.excludeFromDraft,
       enabled: widget.enabled,
+      readOnly: widget.readOnly,
       focusNode: widget.focusNode,
       builder: (context, field) {
         _field = field;
@@ -450,6 +467,7 @@ class _SmartTextFieldState extends State<SmartTextField> {
           controller: _controller,
           focusNode: field.focusNode,
           enabled: field.enabled,
+          readOnly: field.readOnly,
           decoration: widget.decoration.copyWith(errorText: field.errorText),
           keyboardType: widget.keyboardType,
           textInputAction: widget.textInputAction,
