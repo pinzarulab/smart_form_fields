@@ -36,6 +36,7 @@ final class SmartFormScope extends InheritedWidget {
     required this.errorAnimationBuilder,
     required this.autovalidateMode,
     required this.messages,
+    this.inputLocked = false,
     required super.child,
     super.key,
   });
@@ -48,6 +49,7 @@ final class SmartFormScope extends InheritedWidget {
   final SmartErrorAnimationBuilder? errorAnimationBuilder;
   final AutovalidateMode autovalidateMode;
   final SmartFormMessages messages;
+  final bool inputLocked;
 
   static SmartFormScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<SmartFormScope>();
@@ -66,7 +68,8 @@ final class SmartFormScope extends InheritedWidget {
 
   @override
   bool updateShouldNotify(SmartFormScope oldWidget) {
-    return !identical(registrar, oldWidget.registrar) ||
+    return inputLocked != oldWidget.inputLocked ||
+        !identical(registrar, oldWidget.registrar) ||
         scrollDuration != oldWidget.scrollDuration ||
         scrollCurve != oldWidget.scrollCurve ||
         scrollAlignment != oldWidget.scrollAlignment ||

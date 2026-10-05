@@ -34,6 +34,10 @@ class SmartModelForm<T> extends StatelessWidget {
     this.draftController,
     this.onSubmit,
     this.onSubmitResult,
+    this.initialValue,
+    this.preserveDirtyFields = false,
+    this.lockWhileSubmitting = false,
+    this.onChanged,
     this.itemSeparatorHeight = 0,
     this.itemSeparatorBuilder,
     this.padding,
@@ -74,6 +78,18 @@ class SmartModelForm<T> extends StatelessWidget {
   /// Structured typed submission callback.
   final SmartModelResultSubmitCallback<T>? onSubmitResult;
 
+  /// Initial model, encoded and loaded as a clean reset baseline.
+  final T? initialValue;
+
+  /// Keeps local edits when the initial model receives refreshed API data.
+  final bool preserveDirtyFields;
+
+  /// Locks user input while validating or submitting.
+  final bool lockWhileSubmitting;
+
+  /// Receives a decoded model after raw values change.
+  final ValueChanged<T>? onChanged;
+
   /// Spacing between [items].
   final double itemSeparatorHeight;
 
@@ -111,6 +127,14 @@ class SmartModelForm<T> extends StatelessWidget {
       items: items,
       child: child,
       controller: controller,
+      initialValues: initialValue == null
+          ? const {}
+          : adapter.encode(initialValue as T),
+      preserveDirtyFields: preserveDirtyFields,
+      lockWhileSubmitting: lockWhileSubmitting,
+      onChanged: onChanged == null
+          ? null
+          : (values) => onChanged!(adapter.fromValues(SmartFormValues(values))),
       draftController: draftController,
       itemSeparatorHeight: itemSeparatorHeight,
       itemSeparatorBuilder: itemSeparatorBuilder,

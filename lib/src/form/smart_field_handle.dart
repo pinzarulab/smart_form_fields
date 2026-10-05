@@ -9,6 +9,12 @@ import 'smart_form_field_status.dart';
 abstract interface class SmartFieldHandle<T> {
   String get name;
 
+  String? get section;
+
+  bool get hasFocus;
+
+  bool get canRequestFocus;
+
   T? get value;
 
   Future<Object?> resolveResultValue();

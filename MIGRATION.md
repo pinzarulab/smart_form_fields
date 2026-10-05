@@ -1,3 +1,42 @@
+# Migrating to 3.0.0
+
+`controller.submit()` and `formKey.submit()` return `SmartFormSubmitResult`.
+The existing `isValid`, `values`, and `errors` accessors remain available;
+`isValid` describes local validation, while `isSuccess` means the application
+accepted the submission. Backend rejections include field and general errors.
+Validation and submission exceptions are captured in `error` and `stackTrace`
+rather than thrown from `submit()`:
+
+```dart
+final result = await controller.submit();
+if (result.isSuccess) {
+  closePage();
+} else if (result.error != null) {
+  showFailure(result.error!);
+} else {
+  showMessages(result.generalErrors);
+}
+```
+
+`validate()` still throws unexpected validator exceptions. `SmartSubmitButton`
+continues routing submission exceptions to `onError` automatically.
+
+`hasValidated` describes validation of the current value. Editing a field
+invalidates its previous validation status. Use `canSubmit` only when you want
+to require already-completed validation; a normal submit button should remain
+enabled so tapping it can validate untouched fields.
+
+Picker callbacks returning nullable values still treat null as cancellation.
+Use `onPickResult` with `SmartPickerResult.cleared()` to explicitly clear a value.
+
+Keep inactive `SmartFormSection` steps mounted with `IndexedStack` or another
+state-preserving layout. Unmounted fields do not participate in validation.
+
+Async validation retries when registered values change, up to ten attempts.
+Continual changes produce a failed submission result. Values should be immutable
+models: in-place mutations outside form APIs cannot be observed. Draft cleanup
+after success preserves edits made while a request was pending.
+
 # Migrating to 2.0.0
 
 Version 2 keeps existing string names, map results, widget constructors, and

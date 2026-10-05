@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:smart_form_fields/smart_form_fields.dart';
 import 'package:smart_form_fields_example/app.dart';
 
 void main() {
@@ -13,10 +12,11 @@ void main() {
     await tester.pumpWidget(const SmartFormFieldsExampleApp());
 
     expect(find.text('Package examples'), findsOneWidget);
-    expect(find.text('Registration form'), findsOneWidget);
-    expect(find.text('Item-driven form'), findsOneWidget);
     for (final title in const <String>[
+      'Form workflows',
+      'Registration form',
       'Typed developer API',
+      'Item-driven form',
       'Class-defined form',
       'JSON API form',
       'Controller playground',
@@ -29,6 +29,37 @@ void main() {
       );
       expect(find.text(title), findsOneWidget);
     }
+  });
+
+  testWidgets('workflow example validates sections and repeated contacts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SmartFormFieldsExampleApp());
+    await _openExample(tester, 'Form workflows');
+    expect(find.text('mara@example.com'), findsOneWidget);
+    final next = find.widgetWithText(FilledButton, 'Next step');
+    await tester.ensureVisible(next);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
+    expect(find.text('Step 2 of 2'), findsOneWidget);
+
+    final add = find.widgetWithText(TextButton, 'Add contact');
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+    final save = find.widgetWithText(FilledButton, 'Save form');
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.text('Contact name is required'), findsWidgets);
+
+    final contact = find.widgetWithText(TextField, 'Contact 2');
+    await tester.ensureVisible(contact);
+    await tester.enterText(contact, 'Dan');
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(find.text('Saved Mara with 2 contacts.'), findsOneWidget);
   });
 
   testWidgets('validates the item-driven form without deleting its draft', (
@@ -408,23 +439,12 @@ void main() {
 
       final submitBtn = find.byType(FilledButton).first;
       await tester.ensureVisible(submitBtn);
-      
-      final dynamic formState = tester.state(find.byType(SmartForm).first);
-      final dynamic validation = await formState.validate();
-      // ignore: avoid_print
-      print('DEBUG VALIDATION: isValid=${validation.isValid}, errors=${validation.errors}, firstInvalid=${validation.firstInvalidFieldName}');
 
       await tester.tap(submitBtn);
       await tester.pump();
       expect(find.text('Saving Profile…'), findsOneWidget);
 
       await tester.pumpAndSettle();
-      for (final textWidget in tester.widgetList<Text>(find.byType(Text))) {
-        if (textWidget.data != null) {
-          // ignore: avoid_print
-          print('DEBUG TEXT: "${textWidget.data}"');
-        }
-      }
       expect(
         find.text('Email is already taken by another account.'),
         findsOneWidget,
@@ -437,9 +457,7 @@ void main() {
     },
   );
 
-  testWidgets('demonstrates multi-step reveal hook navigation', (
-    tester,
-  ) async {
+  testWidgets('demonstrates multi-step reveal hook navigation', (tester) async {
     await tester.pumpWidget(const SmartFormFieldsExampleApp());
     await _openExample(tester, 'Typed developer API');
 
@@ -466,10 +484,7 @@ void main() {
 
     // onRevealField should have automatically switched back to Step 1!
     expect(find.text('Step 1: Account Setup'), findsOneWidget);
-    expect(
-      find.text('Last revealed field: step_username'),
-      findsOneWidget,
-    );
+    expect(find.text('Last revealed field: step_username'), findsOneWidget);
   });
 
   testWidgets('demonstrates convenience view items and schema fallback', (

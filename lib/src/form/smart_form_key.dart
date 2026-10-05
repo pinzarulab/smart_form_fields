@@ -6,6 +6,7 @@ import 'smart_form.dart';
 import 'smart_form_adapter.dart';
 import 'smart_form_field_status.dart';
 import 'smart_form_result.dart';
+import 'smart_submission.dart';
 
 /// A key that provides imperative access to a mounted [SmartForm].
 final class SmartFormKey extends GlobalKey<SmartFormState> {
@@ -53,6 +54,47 @@ final class SmartFormKey extends GlobalKey<SmartFormState> {
   /// Validates one named field immediately.
   Future<bool> validateField(String name) => _state.validateField(name);
 
+  /// Validates and submits, returning the complete submission outcome.
+  Future<SmartFormSubmitResult> submit({
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => _state.submit(
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  /// Validates a subset of fields identified by names or typed IDs.
+  Future<SmartFormResult> validateFields(
+    Iterable<Object> fields, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => _state.validateFields(
+    fields.map(smartFieldName),
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  /// Validates all mounted fields belonging to [section].
+  Future<SmartFormResult> validateSection(
+    String section, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => _state.validateFields(
+    _state.sectionFields(section),
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  /// Resets one field to its baseline.
+  void resetField(Object field) => _state.resetField(smartFieldName(field));
+
+  /// Clears one error.
+  void clearFieldError(Object field) =>
+      _state.clearFieldError(smartFieldName(field));
+
+  /// Focuses the next enabled writable field.
+  Future<void> focusNext({bool wrap = false}) => _state.focusNext(wrap: wrap);
+
   /// Changes the value of field [name].
   void setValue<T>(
     String name,
@@ -78,13 +120,28 @@ final class SmartFormKey extends GlobalKey<SmartFormState> {
   }) => _state.patchValue(values, options: options);
 
   /// Loads values as a clean reset baseline.
-  void setInitialValues(Map<String, Object?> values) {
-    patchValue(values, options: SmartValueUpdateOptions.initial);
+  void setInitialValues(
+    Map<String, Object?> values, {
+    bool preserveDirtyFields = false,
+  }) {
+    patchValue(<String, Object?>{
+      for (final entry in values.entries)
+        if (!preserveDirtyFields ||
+            _state.fieldStatuses[entry.key]?.isDirty != true)
+          entry.key: entry.value,
+    }, options: SmartValueUpdateOptions.initial);
   }
 
   /// Loads a model as a clean reset baseline.
-  void setInitialModel<T>(T model, SmartFormAdapter<T> adapter) {
-    setInitialValues(adapter.encode(model));
+  void setInitialModel<T>(
+    T model,
+    SmartFormAdapter<T> adapter, {
+    bool preserveDirtyFields = false,
+  }) {
+    setInitialValues(
+      adapter.encode(model),
+      preserveDirtyFields: preserveDirtyFields,
+    );
   }
 
   /// Restores every field to its initial value and clears its state.

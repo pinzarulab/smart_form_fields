@@ -74,3 +74,46 @@ final class SmartSubmissionResult {
 /// Called with a valid snapshot and returns success or handled rejection.
 typedef SmartFormResultSubmitCallback =
     FutureOr<SmartSubmissionResult> Function(SmartFormResult result);
+
+/// Complete outcome of one validation and submission attempt.
+final class SmartFormSubmitResult extends SmartFormResult {
+  /// Combines local validation with an application outcome or exception.
+  SmartFormSubmitResult({
+    required this.validation,
+    required this.phase,
+    this.outcome,
+    this.error,
+    this.stackTrace,
+  }) : super(
+         isValid: validation.isValid,
+         values: validation.values,
+         errors: <String, String>{
+           ...validation.errors,
+           ...?outcome?.fieldErrors,
+         },
+         firstInvalidFieldName:
+             validation.firstInvalidFieldName ??
+             outcome?.fieldErrors.keys.firstOrNull,
+       );
+
+  /// Local validation, before backend errors are applied.
+  final SmartFormResult validation;
+
+  /// Final stage of this attempt.
+  final SmartSubmissionPhase phase;
+
+  /// Application success or handled rejection, when submission ran.
+  final SmartSubmissionResult? outcome;
+
+  /// Exception captured from validation or submission.
+  final Object? error;
+
+  /// Original exception stack trace.
+  final StackTrace? stackTrace;
+
+  /// Whether the application accepted this submission.
+  bool get isSuccess => phase == SmartSubmissionPhase.succeeded;
+
+  /// Backend or application messages unrelated to one field.
+  List<String> get generalErrors => outcome?.generalErrors ?? const [];
+}

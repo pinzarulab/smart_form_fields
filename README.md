@@ -1027,11 +1027,137 @@ SmartForm.withChild(
 );
 ```
 
+## Sections, initial data, and submission outcomes
+
+Load edit data directly and preserve local changes when refreshed API data arrives:
+
+```dart
+SmartModelForm<Profile>(
+  controller: controller,
+  adapter: profileAdapter,
+  initialValue: profile,
+  preserveDirtyFields: true,
+  lockWhileSubmitting: true,
+  onChanged: (profile) => updatePreview(profile),
+  children: fields,
+);
+```
+
+`SmartForm` offers equivalent `initialValues` and raw `onChanged` APIs. Controller
+`setInitialValues` and `setInitialModel` also accept `preserveDirtyFields: true`.
+Preserved dirty fields retain their previous reset baseline; untouched fields
+receive the new baseline.
+Initial values for unmounted conditional fields are applied when those fields
+later register. Imperative `patchValue` remains strict about unknown names.
+
+Group mounted fields into steps or sections:
+
+```dart
+SmartFormSection(
+  name: 'identity',
+  child: Column(children: [nameField, emailField]),
+);
+
+final step = await controller.validateSection('identity');
+final subset = await controller.validateFields([emailId, passwordId]);
+```
+
+Keep inactive steps mounted, for example in `IndexedStack`. Full submission
+validates all enabled mounted fields. Use `onRevealField` to open the step
+containing an error. Subset results include the full value snapshot but only
+the selected fields' validation errors.
+
+```dart
+final result = await controller.submit();
+if (result.isSuccess) {
+  closePage();
+} else if (result.error != null) {
+  showFailure(result.error!);
+} else {
+  showMessages(result.generalErrors);
+}
+```
+
+The result includes `validation`, `phase`, `outcome`, `errors`, `generalErrors`,
+`error`, and `stackTrace`. `isValid` means local validation passed; `isSuccess`
+means submission was accepted. Exceptions are captured by `submit()`, while
+`validate()` retains its exception behavior.
+
+The controller exposes `hasErrors`, `hasValidated`, `isValid`, and `canSubmit`.
+`canSubmit` requires completed validation of current values, no pending checks,
+and no active request. Normal submit buttons remain enabled for untouched forms
+so their first tap can trigger validation. Async validation and result conversion
+retry if values change; use immutable values and form update APIs. Optional
+input locking covers validation and the application callback. Successful
+submission clears a draft only if no newer edits have arrived.
+
+Typed accessors also support focused commands:
+
+```dart
+controller.field(emailId).reset();
+controller.field(emailId).clearError();
+controller.field(emailId).setError('Email is already used');
+await controller.focusNext();
+```
+
+## Clearable pickers
+
+`onPickResult` distinguishes selection, cancellation, and clearing. Nullable
+legacy `onPick` callbacks remain supported. Set `allowClear` to show a clear
+button, and provide a localized `clearTooltip` if needed:
+
+```dart
+SmartPickerField<Country>(
+  name: 'country',
+  allowClear: true,
+  onPickResult: (context, current) async {
+    return await openCountrySheet(context, current)
+        ?? const SmartPickerResult<Country>.cancelled();
+  },
+  displayBuilder: (_, country, _) => Text(country?.name ?? 'Choose country'),
+);
+
+// Return one of these from the sheet:
+SmartPickerResult<Country>.selected(country);
+const SmartPickerResult<Country>.cleared();
+const SmartPickerResult<Country>.cancelled();
+```
+
+## Repeated fields
+
+`SmartFieldArray<T>` registers one immutable `List<T>` value. Each row has a
+stable ID, a value listenable, validation error, read-only state, and a focus
+node. Application-owned row editors call `item.setValue` and attach
+`item.focusNode` for first-error navigation. Manage their text controllers as
+usual, listening to the item to synchronize API updates and resets.
+
+```dart
+final contacts = SmartFieldArrayController<Contact>();
+const contactsId = SmartFieldId<List<Contact>>('contacts');
+
+SmartFieldArray<Contact>(
+  fieldId: contactsId,
+  controller: contacts,
+  initialValue: profile.contacts,
+  itemValidators: [(contact) => contact!.name.isEmpty ? 'Name required' : null],
+  itemBuilder: (_, item, index) => ContactEditor(item: item),
+);
+
+contacts.add(newContact);
+contacts.removeAt(0);
+contacts.move(0, 2); // Destination is the final list index.
+final List<Contact>? values = result.valueFor(contactsId);
+```
+
+Whole-list `validators` and `asyncValidators` support list-level constraints.
+Row `itemValidators` populate each row's `errorText`; the parent reports the
+first row error. Reordering retains editor state. Reset and API patches update
+the list; `excludeFromDraft` excludes the whole repeated field.
+
 ## Example application
 
-The [example](example/) directory contains five Material 3 screens: a complete
-registration flow, a form built entirely from view items, an API-model-class
-form, a snake_case JSON/API form, and an imperative controller playground.
+The [example](example/) directory includes registration, view-item, API-class,
+JSON, controller, animation, typed developer API, and form workflow screens.
 Together they demonstrate reusable and custom fields, sync/async validation,
 item spacing, draft autosaving and restoration, navigation protection,
 bottom-sheet selection, value updates, dynamic and disabled fields, reset,
@@ -1044,7 +1170,9 @@ flutter run
 
 ## Current status
 
-Version 2 includes typed field IDs, typed model adapters, direct field
+Version 3 adds unified submission outcomes, section validation, repeated fields,
+clearable pickers, declarative edit data, and async snapshot protection.
+It includes typed field IDs, typed model adapters, direct field
 accessors, clean edit-form baselines, structured submissions, custom pickers,
 conditional value policies, arbitrary layouts, reveal navigation, reusable
 schema registries, full-response schema extraction, draft persistence, and

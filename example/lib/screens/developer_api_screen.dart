@@ -94,12 +94,10 @@ class _CustomBrandedMessages implements SmartFormMessages {
   String exactLength(int expected) => 'Must be exactly $expected characters.';
 
   @override
-  String minimumLength(int minimum) =>
-      'Requires at least $minimum characters.';
+  String minimumLength(int minimum) => 'Requires at least $minimum characters.';
 
   @override
-  String maximumLength(int maximum) =>
-      'Cannot exceed $maximum characters.';
+  String maximumLength(int maximum) => 'Cannot exceed $maximum characters.';
 
   @override
   String get invalidPattern => 'Format requirement not met.';
@@ -143,7 +141,9 @@ class _ModelAndReactiveStateTabState extends State<_ModelAndReactiveStateTab>
           email: values.get(_emailField) ?? '',
           country: values.get(_countryField),
           accountType: values.get(_accountTypeField) ?? 'personal',
-          companyName: values.get(_companyField),
+          companyName: values.contains(_companyField)
+              ? values.get(_companyField)
+              : null,
         ),
         toValues: (user) => <Object, Object?>{
           _nameField: user.name,
@@ -153,16 +153,6 @@ class _ModelAndReactiveStateTabState extends State<_ModelAndReactiveStateTab>
           _companyField: user.companyName,
         },
       );
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadBaselineModel();
-      }
-    });
-  }
 
   @override
   void dispose() {
@@ -224,18 +214,19 @@ class _ModelAndReactiveStateTabState extends State<_ModelAndReactiveStateTab>
     return SmartModelForm<_UserProfile>(
       controller: _controller,
       adapter: _adapter,
+      initialValue: const _UserProfile(
+        name: 'Mara Ionescu',
+        email: 'mara@example.com',
+        country: 'Moldova',
+      ),
       messages: _useCustomMessages ? const _CustomBrandedMessages() : null,
       onSubmitResult: (user, rawResult) async {
-        // ignore: avoid_print
-        print('DEBUG onSubmitResult called: user.email="${user.email}"');
         final messenger = ScaffoldMessenger.of(context);
         // Simulated backend submission handling
         await Future<void>.delayed(const Duration(milliseconds: 600));
 
         // Server-side conflict check demonstration
         if (user.email.toLowerCase() == 'taken@example.com') {
-          // ignore: avoid_print
-          print('DEBUG onSubmitResult returning REJECTED');
           return const SmartSubmissionResult.rejected(
             fieldErrors: <String, String>{
               'email': 'Email is already taken by another account.',
@@ -263,356 +254,363 @@ class _ModelAndReactiveStateTabState extends State<_ModelAndReactiveStateTab>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             // Controls / Options Bar
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Form Configuration & Baselines',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: <Widget>[
-                      ActionChip(
-                        avatar: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Load Initial Model (Clean)'),
-                        onPressed: _loadBaselineModel,
-                      ),
-                      ActionChip(
-                        avatar: const Icon(Icons.edit_note, size: 18),
-                        label: const Text('Patch Values (Dirty)'),
-                        onPressed: _patchDirtyValues,
-                      ),
-                      ActionChip(
-                        avatar: const Icon(Icons.restart_alt, size: 18),
-                        label: const Text('Reset Form'),
-                        onPressed: () => _controller.reset(),
-                      ),
-                      FilterChip(
-                        label: const Text('Custom Branded Messages'),
-                        selected: _useCustomMessages,
-                        onSelected: (val) {
-                          setState(() => _useCustomMessages = val);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Conditional Hidden Policy:',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Form Configuration & Baselines',
+                      style: theme.textTheme.titleMedium,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 8,
-                    children: SmartHiddenFieldBehavior.values.map((behavior) {
-                      return ChoiceChip(
-                        label: Text(behavior.name),
-                        selected: _hiddenBehavior == behavior,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _hiddenBehavior = behavior);
-                          }
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Form fields
-          SmartTextField(
-            fieldId: _nameField,
-            decoration: const InputDecoration(
-              labelText: 'Display name',
-              prefixIcon: Icon(Icons.person_outline),
-            ),
-            validators: <SmartValidator>[SmartValidators.required()],
-          ),
-          const SizedBox(height: 16),
-
-          SmartEmailField(
-            fieldId: _emailField,
-            required: true,
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              helperText: 'Try "taken@example.com" to see backend rejection',
-              prefixIcon: Icon(Icons.alternate_email),
-            ),
-            asyncValidationDebounce: const Duration(milliseconds: 300),
-            asyncValidators: <SmartAsyncValidator<String>>[
-              // Cooperative controlled async validator demonstration
-              SmartAsyncValidators.controlled<String>(
-                validator: (value, context) async {
-                  if (value == null || value.isEmpty) {
-                    return null;
-                  }
-                  await Future<void>.delayed(const Duration(milliseconds: 400));
-                  context.throwIfCancelled();
-                  if (value.toLowerCase() == 'taken_async@example.com') {
-                    return 'Taken asynchronously!';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          SmartPickerField<String>(
-            fieldId: _countryField,
-            onPick: _pickCountry,
-            displayBuilder: (_, value, _) => Row(
-              children: <Widget>[
-                Icon(
-                  Icons.flag_outlined,
-                  color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
+                        ActionChip(
+                          avatar: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Load Initial Model (Clean)'),
+                          onPressed: _loadBaselineModel,
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.edit_note, size: 18),
+                          label: const Text('Patch Values (Dirty)'),
+                          onPressed: _patchDirtyValues,
+                        ),
+                        ActionChip(
+                          avatar: const Icon(Icons.restart_alt, size: 18),
+                          label: const Text('Reset Form'),
+                          onPressed: () => _controller.reset(),
+                        ),
+                        FilterChip(
+                          label: const Text('Custom Branded Messages'),
+                          selected: _useCustomMessages,
+                          onSelected: (val) {
+                            setState(() => _useCustomMessages = val);
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Conditional Hidden Policy:',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      children: SmartHiddenFieldBehavior.values.map((behavior) {
+                        return ChoiceChip(
+                          label: Text(behavior.name),
+                          selected: _hiddenBehavior == behavior,
+                          onSelected: (selected) {
+                            if (selected) {
+                              setState(() => _hiddenBehavior = behavior);
+                            }
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(value ?? 'Choose Country (Bottom Sheet)'),
-              ],
+              ),
             ),
-            decoration: const InputDecoration(labelText: 'Country'),
-            validators: <SmartValueValidator<String>>[
-              SmartValueValidators.required<String>(),
-            ],
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          SmartDropdownField<String>(
-            fieldId: _accountTypeField,
-            items: const <String>['personal', 'business'],
-            itemLabelBuilder: (value) =>
-                value == 'business' ? 'Business Account' : 'Personal Account',
-            initialValue: 'personal',
-            decoration: const InputDecoration(
-              labelText: 'Account type',
-              prefixIcon: Icon(Icons.badge_outlined),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // SmartConditionalField with multi-field dependencies
-          SmartConditionalField(
-            dependsOn: _accountTypeField,
-            dependsOnFields: <Object>{_countryField},
-            hiddenBehavior: _hiddenBehavior,
-            condition: (value, context) {
-              final country = context.valueOf<String>(_countryField.name);
-              return value == 'business' && country != 'Restricted Country';
-            },
-            child: SmartTextField(
-              fieldId: _companyField,
+            // Form fields
+            SmartTextField(
+              fieldId: _nameField,
               decoration: const InputDecoration(
-                labelText: 'Company name',
-                helperText: 'Visible for Business (except Restricted Country)',
-                prefixIcon: Icon(Icons.business_outlined),
+                labelText: 'Display name',
+                prefixIcon: Icon(Icons.person_outline),
               ),
               validators: <SmartValidator>[SmartValidators.required()],
             ),
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-          // SmartSubmitButton.builder
-          SmartSubmitButton.builder(
-            controller: _controller,
-            builder: (context, phase, onPressed) {
-              final isBusy =
-                  phase == SmartSubmissionPhase.validating ||
-                  phase == SmartSubmissionPhase.submitting;
-
-              return FilledButton.icon(
-                onPressed: onPressed,
-                icon: isBusy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: Text(
-                  isBusy
-                      ? 'Saving Profile…'
-                      : 'Submit Typed Model (SmartSubmitButton.builder)',
+            SmartEmailField(
+              fieldId: _emailField,
+              required: true,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                helperText: 'Try "taken@example.com" to see backend rejection',
+                prefixIcon: Icon(Icons.alternate_email),
+              ),
+              asyncValidationDebounce: const Duration(milliseconds: 300),
+              asyncValidators: <SmartAsyncValidator<String>>[
+                // Cooperative controlled async validator demonstration
+                SmartAsyncValidators.controlled<String>(
+                  validator: (value, context) async {
+                    if (value == null || value.isEmpty) {
+                      return null;
+                    }
+                    await Future<void>.delayed(
+                      const Duration(milliseconds: 400),
+                    );
+                    context.throwIfCancelled();
+                    if (value.toLowerCase() == 'taken_async@example.com') {
+                      return 'Taken asynchronously!';
+                    }
+                    return null;
+                  },
                 ),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
+              ],
+            ),
+            const SizedBox(height: 16),
 
-          // Live Field Accessor & ValueBuilder Card
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            SmartPickerField<String>(
+              fieldId: _countryField,
+              onPick: _pickCountry,
+              displayBuilder: (_, value, _) => Row(
                 children: <Widget>[
-                  Text(
-                    'Email Field Accessor & ValueBuilder',
-                    style: theme.textTheme.titleMedium,
+                  Icon(
+                    Icons.flag_outlined,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  const SizedBox(height: 8),
-                  SmartFormValueBuilder<String>(
-                    controller: _controller,
-                    field: _emailField,
-                    builder: (context, snapshot, _) {
-                      final source = snapshot.errorSource?.name ?? 'none';
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text('Current Value: "${snapshot.value ?? ''}"'),
-                          Text(
-                            'dirty: ${snapshot.isDirty} | '
-                            'touched: ${snapshot.isTouched} | '
-                            'validated: ${snapshot.hasValidated} | '
-                            'validating: ${snapshot.isValidating}',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                          if (snapshot.errorText != null)
-                            Text(
-                              'Error: ${snapshot.errorText} (source: $source)',
-                              style: TextStyle(
-                                color: theme.colorScheme.error,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: <Widget>[
-                      OutlinedButton(
-                        onPressed: () {
-                          final emailAccessor = _controller.field(_emailField);
-                          emailAccessor.validate();
-                        },
-                        child: const Text('Validate Email Accessor'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {
-                          final emailAccessor = _controller.field(_emailField);
-                          emailAccessor.fieldValue = 'dev@smartform.io';
-                        },
-                        child: const Text('Set Email via Accessor'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {
-                          _controller.field(_emailField).focus();
-                        },
-                        child: const Text('Focus Email'),
-                      ),
-                    ],
-                  ),
+                  const SizedBox(width: 8),
+                  Text(value ?? 'Choose Country (Bottom Sheet)'),
                 ],
               ),
+              decoration: const InputDecoration(labelText: 'Country'),
+              validators: <SmartValueValidator<String>>[
+                SmartValueValidators.required<String>(),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Aggregate Form Status via SmartFormStatusBuilder
-          SmartFormStatusBuilder(
-            controller: _controller,
-            builder: (context, controller) {
-              final generalErrors = controller.submissionGeneralErrors;
-              return Card(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          Icon(
-                            Icons.insights,
-                            size: 20,
-                            color: theme.colorScheme.primary,
+            SmartDropdownField<String>(
+              fieldId: _accountTypeField,
+              items: const <String>['personal', 'business'],
+              itemLabelBuilder: (value) =>
+                  value == 'business' ? 'Business Account' : 'Personal Account',
+              initialValue: 'personal',
+              decoration: const InputDecoration(
+                labelText: 'Account type',
+                prefixIcon: Icon(Icons.badge_outlined),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // SmartConditionalField with multi-field dependencies
+            SmartConditionalField(
+              dependsOn: _accountTypeField,
+              dependsOnFields: <Object>{_countryField},
+              hiddenBehavior: _hiddenBehavior,
+              condition: (value, context) {
+                final country = context.valueOf<String>(_countryField.name);
+                return value == 'business' && country != 'Restricted Country';
+              },
+              child: SmartTextField(
+                fieldId: _companyField,
+                decoration: const InputDecoration(
+                  labelText: 'Company name',
+                  helperText:
+                      'Visible for Business (except Restricted Country)',
+                  prefixIcon: Icon(Icons.business_outlined),
+                ),
+                validators: <SmartValidator>[SmartValidators.required()],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // SmartSubmitButton.builder
+            SmartSubmitButton.builder(
+              controller: _controller,
+              builder: (context, phase, onPressed) {
+                final isBusy =
+                    phase == SmartSubmissionPhase.validating ||
+                    phase == SmartSubmissionPhase.submitting;
+
+                return FilledButton.icon(
+                  onPressed: onPressed,
+                  icon: isBusy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'SmartFormStatusBuilder Overview',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.bold,
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    isBusy
+                        ? 'Saving Profile…'
+                        : 'Submit Typed Model (SmartSubmitButton.builder)',
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+
+            // Live Field Accessor & ValueBuilder Card
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Email Field Accessor & ValueBuilder',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    SmartFormValueBuilder<String>(
+                      controller: _controller,
+                      field: _emailField,
+                      builder: (context, snapshot, _) {
+                        final source = snapshot.errorSource?.name ?? 'none';
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text('Current Value: "${snapshot.value ?? ''}"'),
+                            Text(
+                              'dirty: ${snapshot.isDirty} | '
+                              'touched: ${snapshot.isTouched} | '
+                              'validated: ${snapshot.hasValidated} | '
+                              'validating: ${snapshot.isValidating}',
+                              style: theme.textTheme.bodySmall,
                             ),
-                          ),
-                          const Spacer(),
-                          Chip(
-                            label: Text(
-                              'Phase: ${controller.submissionPhase.name}',
-                              style: theme.textTheme.labelSmall,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'isDirty: ${controller.isDirty} '
-                        '(${controller.dirtyFields.isEmpty ? 'none' : controller.dirtyFields.join(', ')})',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      Text(
-                        'isValidating: ${controller.isValidating} '
-                        '(${controller.validatingFields.isEmpty ? 'none' : controller.validatingFields.join(', ')})',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      if (generalErrors.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              Icon(
-                                Icons.error_outline,
-                                color: theme.colorScheme.onErrorContainer,
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  generalErrors.join('\n'),
-                                  style: TextStyle(
-                                    color: theme.colorScheme.onErrorContainer,
-                                    fontSize: 12,
-                                  ),
+                            if (snapshot.errorText != null)
+                              Text(
+                                'Error: ${snapshot.errorText} (source: $source)',
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: <Widget>[
+                        OutlinedButton(
+                          onPressed: () {
+                            final emailAccessor = _controller.field(
+                              _emailField,
+                            );
+                            emailAccessor.validate();
+                          },
+                          child: const Text('Validate Email Accessor'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () {
+                            final emailAccessor = _controller.field(
+                              _emailField,
+                            );
+                            emailAccessor.fieldValue = 'dev@smartform.io';
+                          },
+                          child: const Text('Set Email via Accessor'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () {
+                            _controller.field(_emailField).focus();
+                          },
+                          child: const Text('Focus Email'),
                         ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Aggregate Form Status via SmartFormStatusBuilder
+            SmartFormStatusBuilder(
+              controller: _controller,
+              builder: (context, controller) {
+                final generalErrors = controller.submissionGeneralErrors;
+                return Card(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            Icon(
+                              Icons.insights,
+                              size: 20,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'SmartFormStatusBuilder Overview',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Spacer(),
+                            Chip(
+                              label: Text(
+                                'Phase: ${controller.submissionPhase.name}',
+                                style: theme.textTheme.labelSmall,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'isDirty: ${controller.isDirty} '
+                          '(${controller.dirtyFields.isEmpty ? 'none' : controller.dirtyFields.join(', ')})',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        Text(
+                          'isValidating: ${controller.isValidating} '
+                          '(${controller.validatingFields.isEmpty ? 'none' : controller.validatingFields.join(', ')})',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        if (generalErrors.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.errorContainer,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                Icon(
+                                  Icons.error_outline,
+                                  color: theme.colorScheme.onErrorContainer,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    generalErrors.join('\n'),
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onErrorContainer,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -741,7 +739,10 @@ class _MultiStepAndRevealTabState extends State<_MultiStepAndRevealTab>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Step 1: Account Setup', style: theme.textTheme.titleSmall),
+                    Text(
+                      'Step 1: Account Setup',
+                      style: theme.textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 12),
                     SmartTextField(
                       name: 'step_username',
@@ -766,7 +767,10 @@ class _MultiStepAndRevealTabState extends State<_MultiStepAndRevealTab>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('Step 2: Personal Details', style: theme.textTheme.titleSmall),
+                    Text(
+                      'Step 2: Personal Details',
+                      style: theme.textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 12),
                     SmartTextField(
                       name: 'step_fullname',
@@ -797,8 +801,11 @@ class _MultiStepAndRevealTabState extends State<_MultiStepAndRevealTab>
             children: <Widget>[
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => setState(() => _activeStep = (_activeStep == 0 ? 1 : 0)),
-                  child: Text(_activeStep == 0 ? 'Go to Step 2' : 'Back to Step 1'),
+                  onPressed: () =>
+                      setState(() => _activeStep = (_activeStep == 0 ? 1 : 0)),
+                  child: Text(
+                    _activeStep == 0 ? 'Go to Step 2' : 'Back to Step 1',
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1007,107 +1014,107 @@ class _ItemsAndSchemasTabState extends State<_ItemsAndSchemasTab>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'SmartForm.withItems & Convenience View Items',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Render forms declaratively from SmartFieldViewItem instances '
-                  '(email, password, date, dropdown, picker, conditional) with itemSeparatorBuilder.',
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'SmartForm.withItems & Convenience View Items',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Render forms declaratively from SmartFieldViewItem instances '
+                    '(email, password, date, dropdown, picker, conditional) with itemSeparatorBuilder.',
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-        SmartForm.withItems(
-          controller: _itemsController,
-          itemSeparatorBuilder: (context, index) => const Divider(height: 24),
-          items: <SmartFieldViewItem>[
-            _emailItem,
-            _passwordItem,
-            _dateItem,
-            _dropdownItem,
-            _pickerItem,
-            _conditionalItem,
-          ],
-        ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: () async {
-            final res = await _itemsController.validate();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    res.isValid
-                        ? 'View items form valid! Email: ${_emailItem.text}'
-                        : 'View items validation failed with ${res.errors.length} error(s)',
+          SmartForm.withItems(
+            controller: _itemsController,
+            itemSeparatorBuilder: (context, index) => const Divider(height: 24),
+            items: <SmartFieldViewItem>[
+              _emailItem,
+              _passwordItem,
+              _dateItem,
+              _dropdownItem,
+              _pickerItem,
+              _conditionalItem,
+            ],
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () async {
+              final res = await _itemsController.validate();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      res.isValid
+                          ? 'View items form valid! Email: ${_emailItem.text}'
+                          : 'View items validation failed with ${res.errors.length} error(s)',
+                    ),
                   ),
-                ),
-              );
-            }
-          },
-          child: const Text('Validate View Items Form'),
-        ),
-        const SizedBox(height: 32),
+                );
+              }
+            },
+            child: const Text('Validate View Items Form'),
+          ),
+          const SizedBox(height: 32),
 
-        // Schema Registry and Extraction from Full Response
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'SmartSchemaForm.fromResponse & Registry',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Extracts schema from nested API response path '
-                  '["data", "form_payload"], supports schema_version: 2, '
-                  'read_only fields, and unknown-field fallback builder.',
-                ),
-              ],
+          // Schema Registry and Extraction from Full Response
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'SmartSchemaForm.fromResponse & Registry',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Extracts schema from nested API response path '
+                    '["data", "form_payload"], supports schema_version: 2, '
+                    'read_only fields, and unknown-field fallback builder.',
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-        SmartSchemaForm.fromResponse(
-          controller: _schemaController,
-          response: _mockApiResponse,
-          path: const <Object>['data', 'form_payload'],
-          registry: _schemaRegistry,
-        ),
-        const SizedBox(height: 16),
-        OutlinedButton(
-          onPressed: () async {
-            final res = await _schemaController.validate();
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    res.isValid
-                        ? 'Schema form valid: ${res.values}'
-                        : 'Schema form has ${res.errors.length} error(s)',
+          SmartSchemaForm.fromResponse(
+            controller: _schemaController,
+            response: _mockApiResponse,
+            path: const <Object>['data', 'form_payload'],
+            registry: _schemaRegistry,
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: () async {
+              final res = await _schemaController.validate();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      res.isValid
+                          ? 'Schema form valid: ${res.values}'
+                          : 'Schema form has ${res.errors.length} error(s)',
+                    ),
                   ),
-                ),
-              );
-            }
-          },
-          child: const Text('Validate Schema Response Form'),
-        ),
-      ],
-    ),
-  );
+                );
+              }
+            },
+            child: const Text('Validate Schema Response Form'),
+          ),
+        ],
+      ),
+    );
   }
 }

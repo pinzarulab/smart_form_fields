@@ -51,11 +51,13 @@ export 'src/form/smart_form_field_status.dart'
         SmartValueUpdateOptions;
 export 'src/form/smart_form_key.dart' show SmartFormKey;
 export 'src/form/smart_form_result.dart' show SmartFormResult;
+export 'src/form/smart_form_section.dart' show SmartFormSection;
 export 'src/form/smart_submission.dart'
     show
         SmartFormResultSubmitCallback,
         SmartSubmissionPhase,
         SmartSubmissionResult;
+export 'src/form/smart_submission.dart' show SmartFormSubmitResult;
 export 'src/form/smart_submit_button.dart'
     show SmartSubmitButton, SmartSubmitButtonBuilder;
 export 'src/json/smart_form_schema.dart'
@@ -81,6 +83,12 @@ export 'src/json/smart_json_form.dart'
 export 'src/theme/smart_form_theme.dart'
     show SmartFormTheme, SmartFormThemeData;
 export 'src/fields/smart_field_controller.dart' show SmartFieldController;
+export 'src/fields/smart_field_array.dart'
+    show
+        SmartFieldArray,
+        SmartFieldArrayController,
+        SmartArrayItem,
+        SmartArrayItemBuilder;
 export 'src/fields/smart_field_view_item.dart'
     show SmartFieldValueReader, SmartFieldViewItem, SmartWidgetFieldViewItem;
 export 'src/fields/smart_date_field.dart'
@@ -110,6 +118,8 @@ export 'src/fields/smart_picker_field.dart'
         SmartPickerDisplayBuilder,
         SmartPickerField,
         SmartPickerFieldViewItem;
+export 'src/fields/smart_picker_field.dart'
+    show SmartPickerResult, SmartPickerResultCallback;
 export 'src/fields/smart_phone_field.dart'
     show
         SmartPhoneCountrySelectorLayout,

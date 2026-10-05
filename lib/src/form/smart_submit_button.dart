@@ -111,12 +111,14 @@ class SmartSubmitButton extends StatelessWidget {
         scrollToError: scrollToError,
         focusFirstError: focusFirstError,
       );
-      if (!result.isValid) {
+      if (result.error != null) {
+        onError?.call(result.error!);
+      } else if (!result.isValid) {
         onInvalid?.call();
-      } else if (controller.submissionPhase == SmartSubmissionPhase.succeeded) {
+      } else if (result.isSuccess) {
         onSubmitted?.call();
       } else if (controller.submissionPhase == SmartSubmissionPhase.rejected) {
-        final outcome = controller.lastSubmissionOutcome;
+        final outcome = result.outcome;
         if (outcome != null) {
           onRejected?.call(outcome);
         }

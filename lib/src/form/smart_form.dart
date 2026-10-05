@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show FlutterView;
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../animation/smart_error_animation.dart';
@@ -51,6 +52,10 @@ class SmartForm extends StatefulWidget {
     this.onRevealField,
     this.onSubmit,
     this.onSubmitResult,
+    this.onChanged,
+    this.initialValues = const {},
+    this.preserveDirtyFields = false,
+    this.lockWhileSubmitting = false,
     this.messages,
     this.autovalidateMode = AutovalidateMode.onUnfocus,
     this.mainAxisSize = MainAxisSize.min,
@@ -86,6 +91,10 @@ class SmartForm extends StatefulWidget {
     SmartFormRevealField? onRevealField,
     SmartFormSubmitCallback? onSubmit,
     SmartFormResultSubmitCallback? onSubmitResult,
+    ValueChanged<Map<String, Object?>>? onChanged,
+    Map<String, Object?> initialValues = const {},
+    bool preserveDirtyFields = false,
+    bool lockWhileSubmitting = false,
     SmartFormMessages? messages,
     AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
     EdgeInsetsGeometry? padding,
@@ -108,6 +117,10 @@ class SmartForm extends StatefulWidget {
          onRevealField: onRevealField,
          onSubmit: onSubmit,
          onSubmitResult: onSubmitResult,
+         onChanged: onChanged,
+         initialValues: initialValues,
+         preserveDirtyFields: preserveDirtyFields,
+         lockWhileSubmitting: lockWhileSubmitting,
          messages: messages,
          autovalidateMode: autovalidateMode,
          padding: padding,
@@ -134,6 +147,10 @@ class SmartForm extends StatefulWidget {
     SmartFormRevealField? onRevealField,
     SmartFormSubmitCallback? onSubmit,
     SmartFormResultSubmitCallback? onSubmitResult,
+    ValueChanged<Map<String, Object?>>? onChanged,
+    Map<String, Object?> initialValues = const {},
+    bool preserveDirtyFields = false,
+    bool lockWhileSubmitting = false,
     SmartFormMessages? messages,
     AutovalidateMode autovalidateMode = AutovalidateMode.onUnfocus,
     MainAxisSize mainAxisSize = MainAxisSize.min,
@@ -159,6 +176,10 @@ class SmartForm extends StatefulWidget {
          onRevealField: onRevealField,
          onSubmit: onSubmit,
          onSubmitResult: onSubmitResult,
+         onChanged: onChanged,
+         initialValues: initialValues,
+         preserveDirtyFields: preserveDirtyFields,
+         lockWhileSubmitting: lockWhileSubmitting,
          messages: messages,
          autovalidateMode: autovalidateMode,
          mainAxisSize: mainAxisSize,
@@ -230,6 +251,18 @@ class SmartForm extends StatefulWidget {
   /// Structured submit callback with automatic handled-error application.
   final SmartFormResultSubmitCallback? onSubmitResult;
 
+  /// Receives immutable raw values after a value change.
+  final ValueChanged<Map<String, Object?>>? onChanged;
+
+  /// Values loaded after fields register, and again when changed.
+  final Map<String, Object?> initialValues;
+
+  /// Preserves local edits when API initial data is refreshed.
+  final bool preserveDirtyFields;
+
+  /// Makes inputs read-only during controller-managed submission.
+  final bool lockWhileSubmitting;
+
   /// Application-owned messages, or null to use [SmartFormTheme].
   final SmartFormMessages? messages;
 
@@ -257,12 +290,22 @@ class SmartFormState extends State<SmartForm>
   double _lastKeyboardInset = 0;
   final Set<VoidCallback> _formListeners = <VoidCallback>{};
   bool _formNotificationScheduled = false;
+  int _valueRevision = 0;
+  final Expando<int> _validatedRevisions = Expando<int>();
+  final SmartFormController _internalSubmissionController =
+      SmartFormController();
+  bool _lastInputLocked = false;
+  bool _initialValuesLoaded = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _internalSubmissionController.attach(this);
+    _internalSubmissionController.addListener(_handleSubmissionChanged);
     widget.controller?.attach(this);
+    widget.controller?.addListener(_handleSubmissionChanged);
+    _loadInitialValuesAfterLayout();
     _attachDraftAfterLayout();
   }
 
@@ -295,12 +338,17 @@ class SmartFormState extends State<SmartForm>
   @override
   void didUpdateWidget(SmartForm oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!mapEquals(oldWidget.initialValues, widget.initialValues)) {
+      _loadInitialValuesAfterLayout();
+    }
     if (!identical(oldWidget.controller, widget.controller)) {
       if (oldWidget.controller != null) {
         oldWidget.draftController?.detach(oldWidget.controller!);
       }
       oldWidget.controller?.detach(this);
+      oldWidget.controller?.removeListener(_handleSubmissionChanged);
       widget.controller?.attach(this);
+      widget.controller?.addListener(_handleSubmissionChanged);
     }
     if (!identical(oldWidget.draftController, widget.draftController) ||
         !identical(oldWidget.controller, widget.controller)) {
@@ -319,8 +367,35 @@ class SmartFormState extends State<SmartForm>
       widget.draftController?.detach(widget.controller!);
     }
     widget.controller?.detach(this);
+    widget.controller?.removeListener(_handleSubmissionChanged);
+    _internalSubmissionController.dispose();
     _focusScopeNode.dispose();
     super.dispose();
+  }
+
+  void _handleSubmissionChanged() {
+    final locked =
+        widget.lockWhileSubmitting &&
+        ((widget.controller?.isSubmitting ?? false) ||
+            _internalSubmissionController.isSubmitting);
+    if (mounted && locked != _lastInputLocked) {
+      setState(() => _lastInputLocked = locked);
+    }
+  }
+
+  void _loadInitialValuesAfterLayout() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _initialValuesLoaded = true;
+      if (widget.initialValues.isEmpty) return;
+      patchValue(<String, Object?>{
+        for (final entry in widget.initialValues.entries)
+          if (_registry.fieldNamed(entry.key) != null &&
+              (!widget.preserveDirtyFields ||
+                  _registry.fieldNamed(entry.key)?.isDirty != true))
+            entry.key: entry.value,
+      }, options: SmartValueUpdateOptions.initial);
+    });
   }
 
   void _attachDraftAfterLayout() {
@@ -430,22 +505,83 @@ class SmartFormState extends State<SmartForm>
     bool? scrollToError,
     bool? focusFirstError,
   }) async {
+    return _validateFields(
+      _registry.fields,
+      allFields: true,
+      scrollToError: scrollToError,
+      focusFirstError: focusFirstError,
+    );
+  }
+
+  @override
+  Future<SmartFormResult> validateFields(
+    Iterable<String> names, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) {
+    final selected = names.toSet();
+    for (final name in selected) {
+      _fieldNamed(name);
+    }
+    return _validateFields(
+      _registry.fields.where((f) => selected.contains(f.name)).toList(),
+      scrollToError: scrollToError,
+      focusFirstError: focusFirstError,
+    );
+  }
+
+  @override
+  Iterable<String> sectionFields(String name) =>
+      _registry.fields.where((f) => f.section == name).map((f) => f.name);
+
+  Future<SmartFormResult> _validateFields(
+    List<SmartFieldHandle<Object?>> fields, {
+    bool allFields = false,
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) async {
     final theme = SmartFormTheme.of(context);
     _registry.validateDependencyGraph(requireKnownFields: true);
-    final fields = _registry.fields;
-    final validationSnapshot = validationContext;
-    for (final field in fields) {
-      if (field.enabled) {
-        await field.validate(animateError: false, context: validationSnapshot);
+    Map<String, Object?> resultValues = const {};
+    var stable = false;
+    var stableRevision = _valueRevision;
+    for (var attempt = 0; attempt < 10; attempt++) {
+      if (allFields) fields = _registry.fields;
+      final revision = _valueRevision;
+      final validationSnapshot = validationContext;
+      for (final field in fields) {
+        if (field.enabled && _registry.contains(field)) {
+          await field.validate(
+            animateError: false,
+            context: validationSnapshot,
+          );
+        }
       }
+      resultValues = await _registry.resolveResultValues();
+      if (!mounted) throw StateError('Form detached during validation.');
+      if (revision == _valueRevision) {
+        stable = true;
+        stableRevision = revision;
+        break;
+      }
+    }
+    if (!stable) {
+      throw StateError(
+        'Form values kept changing during validation. Retry submission.',
+      );
     }
 
     final errors = <String, String>{
       for (final field in fields)
-        if (field.enabled && !field.isValid && field.errorText != null)
+        if (_registry.contains(field) &&
+            field.enabled &&
+            !field.isValid &&
+            field.errorText != null)
           field.name: field.errorText!,
     };
-    final firstInvalidField = _registry.firstInvalidField;
+    final firstInvalidField = fields
+        .where((f) => f.enabled && !f.isValid && _registry.contains(f))
+        .firstOrNull;
     final shouldScroll =
         scrollToError ?? widget.scrollToFirstError ?? theme.scrollToFirstError;
     final shouldFocus =
@@ -462,12 +598,14 @@ class SmartFormState extends State<SmartForm>
       }
     }
 
-    return SmartFormResult(
+    final result = SmartFormResult(
       isValid: firstInvalidField == null,
-      values: await _registry.resolveResultValues(),
+      values: resultValues,
       errors: errors,
       firstInvalidFieldName: firstInvalidField?.name,
     );
+    _validatedRevisions[result] = stableRevision;
+    return result;
   }
 
   @override
@@ -476,23 +614,42 @@ class SmartFormState extends State<SmartForm>
   }
 
   @override
-  Future<SmartFormResult> submit({
-    bool? scrollToError,
-    bool? focusFirstError,
-  }) async {
-    final result = await validate(
-      scrollToError: scrollToError,
-      focusFirstError: focusFirstError,
-    );
-    if (!result.isValid) {
-      return result;
-    }
-    await performSubmit(result);
-    return result;
+  void resetField(String name) {
+    _fieldNamed(name).reset();
+    _valueRevision++;
+    _revalidateDependents([name]);
+    widget.onChanged?.call(values);
   }
 
   @override
+  void clearFieldError(String name) => _fieldNamed(name).clearError();
+
+  @override
+  Future<void> focusNext({bool wrap = false}) async {
+    final fields = _registry.fields
+        .where((f) => f.enabled && !f.readOnly && f.canRequestFocus)
+        .toList();
+    if (fields.isEmpty) return;
+    final index = fields.indexWhere((f) => f.hasFocus);
+    if (index + 1 < fields.length) {
+      await focusField(fields[index + 1].name);
+    } else if (wrap) {
+      await focusField(fields.first.name);
+    }
+  }
+
+  @override
+  Future<SmartFormSubmitResult> submit({
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => (widget.controller ?? _internalSubmissionController).submit(
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  @override
   Future<SmartSubmissionResult> performSubmit(SmartFormResult result) async {
+    final revision = _validatedRevisions[result] ?? _valueRevision;
     final structured = widget.onSubmitResult;
     if (structured != null) {
       var outcome = await structured(result);
@@ -529,14 +686,18 @@ class SmartFormState extends State<SmartForm>
         }
         return outcome;
       }
-      await widget.draftController?.markSubmitted();
+      if (revision == _valueRevision) {
+        await widget.draftController?.markSubmitted();
+      }
       return outcome;
     }
 
     final legacy = widget.onSubmit;
     if (legacy != null) {
       await legacy(result.values);
-      await widget.draftController?.markSubmitted();
+      if (revision == _valueRevision) {
+        await widget.draftController?.markSubmitted();
+      }
     }
     return const SmartSubmissionResult.success();
   }
@@ -600,14 +761,19 @@ class SmartFormState extends State<SmartForm>
         options: options,
       );
     }
+    if (fields.isNotEmpty) _valueRevision++;
     _revalidateDependents(values.keys);
     _notifyFormListeners();
+    if (fields.isNotEmpty) widget.onChanged?.call(this.values);
   }
 
   @override
   void reset() {
     _registry.reset();
+    _valueRevision++;
+    _revalidateDependents(_registry.fields.map((f) => f.name));
     _notifyFormListeners();
+    widget.onChanged?.call(values);
   }
 
   @override
@@ -766,19 +932,39 @@ class SmartFormState extends State<SmartForm>
     SmartFieldHandle<Object?> field, {
     required int sectionOrder,
   }) {
+    final isNew = !_registry.contains(field);
+    if (isNew) _valueRevision++;
     _registry.register(field, sectionOrder: sectionOrder);
+    if (isNew &&
+        _initialValuesLoaded &&
+        widget.initialValues.containsKey(field.name)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            _registry.contains(field) &&
+            (!widget.preserveDirtyFields || !field.isDirty)) {
+          setValue(
+            field.name,
+            widget.initialValues[field.name],
+            options: SmartValueUpdateOptions.initial,
+          );
+        }
+      });
+    }
   }
 
   @override
   void unregisterField(SmartFieldHandle<Object?> field) {
+    if (_registry.contains(field)) _valueRevision++;
     _registry.unregister(field);
   }
 
   @override
   void fieldValueChanged(SmartFieldHandle<Object?> field) {
     if (_registry.contains(field)) {
+      _valueRevision++;
       _revalidateDependents(<String>[field.name]);
       _notifyFormListeners();
+      widget.onChanged?.call(values);
     }
   }
 
@@ -840,6 +1026,10 @@ class SmartFormState extends State<SmartForm>
                 widget.errorAnimationBuilder ?? theme.errorAnimationBuilder,
             autovalidateMode: widget.autovalidateMode,
             messages: widget.messages ?? theme.messages,
+            inputLocked:
+                widget.lockWhileSubmitting &&
+                ((widget.controller?.isSubmitting ?? false) ||
+                    _internalSubmissionController.isSubmitting),
             child: content,
           ),
         ),

@@ -1,3 +1,17 @@
+## 3.0.0
+
+* Return unified `SmartFormSubmitResult` from controller submission, combining
+  validation, backend errors, success, and captured exceptions.
+* Add subset and named-section validation with `SmartFormSection`.
+* Add field reset/error commands and ordered `focusNext` navigation.
+* Add explicit picker selection/clear/cancel results and optional clear buttons.
+* Add form change callbacks and validated aggregate submission readiness.
+* Retry validation when values change during asynchronous checks or result
+  transformation, and support optional input locking during submission.
+* Add declarative initial form/model values and dirty-preserving API refresh.
+* Add typed repeated `SmartFieldArray` editors with stable row identities,
+  add/remove/reorder commands, row validation, and list results.
+
 ## 2.0.1
 
 * Preserve field input state and keyboard connections when validation-error

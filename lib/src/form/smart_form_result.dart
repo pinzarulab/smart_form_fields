@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'smart_field_id.dart';
 
 /// An immutable snapshot produced by validating a smart form.
-final class SmartFormResult {
+class SmartFormResult {
   /// Creates an immutable validation result from the supplied snapshots.
   SmartFormResult({
     required this.isValid,

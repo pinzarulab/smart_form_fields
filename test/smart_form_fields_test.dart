@@ -356,6 +356,15 @@ class _TestFieldState extends State<_TestField>
   String get name => widget.name;
 
   @override
+  String? get section => null;
+
+  @override
+  bool get hasFocus => false;
+
+  @override
+  bool get canRequestFocus => true;
+
+  @override
   Object? get value => _value;
 
   @override

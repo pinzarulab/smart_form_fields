@@ -39,6 +39,25 @@ abstract interface class SmartFormControllerDelegate {
   /// Validates one named field.
   Future<bool> validateField(String name);
 
+  /// Validates only the supplied registered fields.
+  Future<SmartFormResult> validateFields(
+    Iterable<String> names, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  });
+
+  /// Names belonging to a named form section.
+  Iterable<String> sectionFields(String name);
+
+  /// Restores one field to its initial value.
+  void resetField(String name);
+
+  /// Clears one field's error.
+  void clearFieldError(String name);
+
+  /// Moves to the next enabled writable field in widget order.
+  Future<void> focusNext({bool wrap = false});
+
   /// Validates the form and runs its submit callback when valid.
   Future<SmartFormResult> submit({bool? scrollToError, bool? focusFirstError});
 
@@ -90,7 +109,7 @@ final class SmartFormController extends ChangeNotifier {
       <String, _SmartFieldAccessorBase>{};
   bool _disposed = false;
   bool _isSubmitting = false;
-  Future<SmartFormResult>? _activeSubmission;
+  Future<SmartFormSubmitResult>? _activeSubmission;
   SmartFormResult? _lastSubmitResult;
   Object? _submissionError;
   SmartSubmissionPhase _submissionPhase = SmartSubmissionPhase.idle;
@@ -142,6 +161,23 @@ final class SmartFormController extends ChangeNotifier {
 
   /// Whether any field is currently running asynchronous validation.
   bool get isValidating => validatingFields.isNotEmpty;
+
+  /// Whether any enabled field currently has an error.
+  bool get hasErrors =>
+      isAttached && fieldStatuses.values.any((s) => s.enabled && !s.isValid);
+
+  /// Whether every enabled field has completed validation.
+  bool get hasValidated =>
+      isAttached &&
+      fieldStatuses.values
+          .where((s) => s.enabled)
+          .every((s) => s.hasValidated && !s.isValidating);
+
+  /// Whether all enabled fields have passed completed validation.
+  bool get isValid => hasValidated && !hasErrors;
+
+  /// Whether a known-valid form can begin a new submission.
+  bool get canSubmit => isAttached && !isSubmitting && !isValidating && isValid;
 
   /// Returns field [name] as [T], or null when its value is null.
   T? valueOf<T>(String name) => _requireDelegate().valueOf<T>(name);
@@ -198,19 +234,59 @@ final class SmartFormController extends ChangeNotifier {
     return _requireDelegate().validateField(name);
   }
 
+  /// Validates a subset, accepting names or typed field IDs.
+  Future<SmartFormResult> validateFields(
+    Iterable<Object> fields, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => _requireDelegate().validateFields(
+    fields.map(smartFieldName),
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  /// Validates all mounted fields in [section].
+  Future<SmartFormResult> validateSection(
+    String section, {
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) => validateFields(
+    _requireDelegate().sectionFields(section),
+    scrollToError: scrollToError,
+    focusFirstError: focusFirstError,
+  );
+
+  /// Resets one field, accepting a name or typed ID.
+  void resetField(Object field) =>
+      _requireDelegate().resetField(smartFieldName(field));
+
+  /// Clears one field error.
+  void clearFieldError(Object field) =>
+      _requireDelegate().clearFieldError(smartFieldName(field));
+
+  /// Focuses the next enabled writable field; optionally wraps to the first.
+  Future<void> focusNext({bool wrap = false}) =>
+      _requireDelegate().focusNext(wrap: wrap);
+
   /// Validates the form, prevents duplicate concurrent submissions, and runs
   /// `SmartForm.onSubmit` when the form is valid.
-  Future<SmartFormResult> submit({bool? scrollToError, bool? focusFirstError}) {
+  Future<SmartFormSubmitResult> submit({
+    bool? scrollToError,
+    bool? focusFirstError,
+  }) {
     final active = _activeSubmission;
     if (active != null) {
       return active;
     }
-    final submission = _submit(
-      scrollToError: scrollToError,
-      focusFirstError: focusFirstError,
+    final completer = Completer<SmartFormSubmitResult>();
+    _activeSubmission = completer.future;
+    unawaited(
+      _submit(
+        scrollToError: scrollToError,
+        focusFirstError: focusFirstError,
+      ).then(completer.complete, onError: completer.completeError),
     );
-    _activeSubmission = submission;
-    return submission;
+    return completer.future;
   }
 
   /// Changes the value of field [name].
@@ -240,13 +316,27 @@ final class SmartFormController extends ChangeNotifier {
   }
 
   /// Loads API/model values as a clean reset baseline.
-  void setInitialValues(Map<String, Object?> values) {
-    patchValue(values, options: SmartValueUpdateOptions.initial);
+  void setInitialValues(
+    Map<String, Object?> values, {
+    bool preserveDirtyFields = false,
+  }) {
+    patchValue(<String, Object?>{
+      for (final entry in values.entries)
+        if (!preserveDirtyFields || fieldStatuses[entry.key]?.isDirty != true)
+          entry.key: entry.value,
+    }, options: SmartValueUpdateOptions.initial);
   }
 
   /// Loads [model] as a clean reset baseline through [adapter].
-  void setInitialModel<T>(T model, SmartFormAdapter<T> adapter) {
-    setInitialValues(adapter.encode(model));
+  void setInitialModel<T>(
+    T model,
+    SmartFormAdapter<T> adapter, {
+    bool preserveDirtyFields = false,
+  }) {
+    setInitialValues(
+      adapter.encode(model),
+      preserveDirtyFields: preserveDirtyFields,
+    );
   }
 
   /// Restores every field to its initial value and clears its state.
@@ -362,7 +452,7 @@ final class SmartFormController extends ChangeNotifier {
     return SmartFieldSnapshot<T>.fromStatus(status);
   }
 
-  Future<SmartFormResult> _submit({
+  Future<SmartFormSubmitResult> _submit({
     bool? scrollToError,
     bool? focusFirstError,
   }) async {
@@ -372,16 +462,21 @@ final class SmartFormController extends ChangeNotifier {
     _submissionGeneralErrors = const <String>[];
     _submissionPhase = SmartSubmissionPhase.validating;
     notifyListeners();
+    SmartFormResult? validation;
     try {
       final delegate = _requireDelegate();
       final result = await delegate.validate(
         scrollToError: scrollToError,
         focusFirstError: focusFirstError,
       );
+      validation = result;
       _lastSubmitResult = result;
       if (!result.isValid) {
         _submissionPhase = SmartSubmissionPhase.invalid;
-        return result;
+        return SmartFormSubmitResult(
+          validation: result,
+          phase: _submissionPhase,
+        );
       }
       _submissionPhase = SmartSubmissionPhase.submitting;
       notifyListeners();
@@ -393,15 +488,26 @@ final class SmartFormController extends ChangeNotifier {
       _submissionPhase = outcome.accepted
           ? SmartSubmissionPhase.succeeded
           : SmartSubmissionPhase.rejected;
-      return result;
-    } catch (error) {
+      return SmartFormSubmitResult(
+        validation: result,
+        phase: _submissionPhase,
+        outcome: outcome,
+      );
+    } catch (error, stackTrace) {
       _submissionError = error;
       _submissionPhase = SmartSubmissionPhase.failed;
-      rethrow;
+      return SmartFormSubmitResult(
+        validation:
+            validation ??
+            SmartFormResult(isValid: false, values: const {}, errors: const {}),
+        phase: _submissionPhase,
+        error: error,
+        stackTrace: stackTrace,
+      );
     } finally {
       _isSubmitting = false;
       _activeSubmission = null;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -465,6 +571,15 @@ final class SmartFieldAccessor<T>
 
   /// Validates this field immediately.
   Future<bool> validate() => _form.validateField(id.name);
+
+  /// Restores this field's reset baseline.
+  void reset() => _form.resetField(id);
+
+  /// Clears this field's current error.
+  void clearError() => _form.clearFieldError(id);
+
+  /// Applies a server/application error.
+  void setError(String error) => _form.setFieldError(id.name, error);
 
   /// Scrolls this field into view without changing focus.
   Future<void> scrollIntoView() => _form.scrollToField(id.name);

@@ -9,6 +9,7 @@ import '../form/smart_field_handle.dart';
 import '../form/smart_field_id.dart';
 import '../form/smart_form_field_status.dart';
 import '../form/smart_form_scope.dart';
+import '../form/smart_form_section.dart';
 import '../validation/smart_async_validator.dart';
 import '../validation/smart_validation_context.dart';
 import '../validation/smart_validator.dart';
@@ -117,6 +118,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
 
   SmartFormScope? _formScope;
   SmartFieldActivityScope? _activityScope;
+  String? _section;
   late FocusNode _focusNode;
   late T? _value;
   late T? _initialValue;
@@ -126,6 +128,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   bool _isDirty = false;
   bool _isTouched = false;
   bool _hasValidated = false;
+  bool _hasValidatedOnce = false;
   bool _wasFocused = false;
   int _validationGeneration = 0;
   late final AnimationController _errorAnimationController;
@@ -133,6 +136,15 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
 
   @override
   String get name => widget.name;
+
+  @override
+  String? get section => _section;
+
+  @override
+  bool get hasFocus => _focusNode.hasFocus;
+
+  @override
+  bool get canRequestFocus => _focusNode.canRequestFocus;
 
   @override
   T? get value => _value;
@@ -159,7 +171,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   bool get enabled => widget.enabled && (_activityScope?.active ?? true);
 
   @override
-  bool get readOnly => widget.readOnly;
+  bool get readOnly => widget.readOnly || (_formScope?.inputLocked ?? false);
 
   @override
   bool get excludeFromDraft => widget.excludeFromDraft;
@@ -204,6 +216,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     super.didChangeDependencies();
     final previousMode = _formScope == null ? null : _effectiveAutovalidateMode;
     final nextScope = SmartFormScope.of(context);
+    _section = SmartFormSection.maybeOf(context);
     _activityScope = SmartFieldActivityScope.maybeOf(context);
     if (!identical(_formScope?.registrar, nextScope.registrar)) {
       _formScope?.registrar.unregisterField(this);
@@ -259,7 +272,8 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
         });
       }
     }
-    if (!_isDirty && oldWidget.initialValue != widget.initialValue) {
+    if (!_isDirty &&
+        !_valuesEqual(oldWidget.initialValue, widget.initialValue)) {
       _validationGeneration++;
       _value = widget.initialValue;
       _initialValue = widget.initialValue;
@@ -267,6 +281,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
       _errorSource = null;
       _isValidating = false;
       _hasValidated = false;
+      _hasValidatedOnce = false;
     }
     final validatorsChanged =
         !listEquals(oldWidget.validators, widget.validators) ||
@@ -282,6 +297,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     } else if (validatorsChanged) {
       _validationGeneration++;
       _isValidating = false;
+      _hasValidated = false;
       if (_shouldAutovalidateNow) {
         unawaited(_validateAutomatically(reason: 'after validators changed'));
       }
@@ -311,11 +327,14 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
   }
 
   @override
-  void didChange(T? value) => _changeValue(
-    value,
-    notifyDependents: true,
-    options: SmartValueUpdateOptions.patch,
-  );
+  void didChange(T? value) {
+    if (readOnly || !enabled) return;
+    _changeValue(
+      value,
+      notifyDependents: true,
+      options: SmartValueUpdateOptions.patch,
+    );
+  }
 
   void _changeValue(
     T? value, {
@@ -337,10 +356,12 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
         _errorSource = null;
       }
       _isValidating = false;
-      _isDirty = options.markDirty && value != _initialValue;
+      _hasValidated = false;
+      _isDirty = options.markDirty && !_valuesEqual(value, _initialValue);
       _isTouched = options.markTouched;
       if (options.updateInitialValue) {
         _hasValidated = false;
+        _hasValidatedOnce = false;
       }
     });
     if (notifyDependents) {
@@ -360,6 +381,12 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
         ),
       );
     }
+  }
+
+  bool _valuesEqual(Object? a, Object? b) {
+    if (a is List && b is List) return listEquals(a, b);
+    if (a is Map && b is Map) return mapEquals(a, b);
+    return a == b;
   }
 
   @override
@@ -387,7 +414,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
 
   @override
   void dependencyDidChange(SmartValidationContext context) {
-    if (!widget.enabled || !_hasValidated) {
+    if (!widget.enabled || !_hasValidatedOnce) {
       return;
     }
     _validationGeneration++;
@@ -458,6 +485,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
         _isTouched = true;
         _isValidating = false;
         _hasValidated = true;
+        _hasValidatedOnce = true;
       });
     }
 
@@ -578,6 +606,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
       _isDirty = false;
       _isTouched = false;
       _hasValidated = false;
+      _hasValidatedOnce = false;
     });
     _formScope?.registrar.fieldStateChanged(this);
   }
@@ -589,6 +618,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
       _errorText = null;
       _errorSource = null;
       _isValidating = false;
+      _hasValidated = false;
     });
     _formScope?.registrar.fieldStateChanged(this);
   }
@@ -602,6 +632,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
       _isValidating = false;
       _isTouched = true;
       _hasValidated = true;
+      _hasValidatedOnce = true;
     });
     _formScope?.registrar.fieldStateChanged(this);
     if (animateError) {

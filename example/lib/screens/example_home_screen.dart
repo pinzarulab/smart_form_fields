@@ -7,6 +7,7 @@ import 'developer_api_screen.dart';
 import 'items_form_screen.dart';
 import 'json_form_screen.dart';
 import 'registration_form_screen.dart';
+import 'workflow_form_screen.dart';
 
 class ExampleHomeScreen extends StatelessWidget {
   const ExampleHomeScreen({super.key});
@@ -30,6 +31,15 @@ class ExampleHomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+            _DemoCard(
+              icon: Icons.dynamic_form_outlined,
+              title: 'Form workflows',
+              description:
+                  'Section validation, typed repeated rows, clearable pickers, '
+                  'API refresh, input locking, and unified submission results.',
+              onTap: () => _open(context, const WorkflowFormExamplePage()),
+            ),
+            const SizedBox(height: 12),
             _DemoCard(
               icon: Icons.person_add_alt_1_outlined,
               title: 'Registration form',
