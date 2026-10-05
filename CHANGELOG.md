@@ -1,3 +1,7 @@
+## 3.0.1
+
+* Pin CI to Flutter `3.47.6` for reproducible Dart formatting checks.
+
 ## 3.0.0
 
 * Return unified `SmartFormSubmitResult` from controller submission, combining
