@@ -1,3 +1,9 @@
+## 2.0.1
+
+* Preserve field input state and keyboard connections when validation-error
+  animations add or change wrappers, fixing invalid fields losing focus on the
+  first tap.
+
 ## 2.0.0
 
 * Add typed `SmartFieldId<T>` identities across fields, results, validation

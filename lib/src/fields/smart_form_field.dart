@@ -113,6 +113,7 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     with SingleTickerProviderStateMixin
     implements SmartFieldController<T>, SmartFieldHandle<T> {
   final GlobalKey _anchorKey = GlobalKey();
+  final GlobalKey _inputKey = GlobalKey();
 
   SmartFormScope? _formScope;
   SmartFieldActivityScope? _activityScope;
@@ -674,7 +675,12 @@ class _SmartFormFieldState<T> extends State<SmartFormField<T>>
     return Builder(
       key: _anchorKey,
       builder: (context) {
-        final child = widget.builder(context, this);
+        // Error animations can add or replace wrappers. Preserve the input's
+        // element and text-input connection when its parent structure changes.
+        final child = KeyedSubtree(
+          key: _inputKey,
+          child: widget.builder(context, this),
+        );
         return AnimatedBuilder(
           animation: _errorAnimationController,
           child: child,

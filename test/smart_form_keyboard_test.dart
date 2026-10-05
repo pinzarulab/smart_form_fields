@@ -3,6 +3,107 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_form_fields/smart_form_fields.dart';
 
 void main() {
+  for (final animation in SmartErrorAnimation.values) {
+    testWidgets(
+      'invalid field retains its input state and opens on first tap ($animation)',
+      (tester) async {
+        const blankKey = ValueKey<String>('invalid-field-blank-space');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SmartForm(
+                errorAnimation: animation,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                children: <Widget>[
+                  SmartEmailField(name: 'email'),
+                  const SizedBox(key: blankKey, height: 100, width: 300),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        final field = find.byType(TextField);
+        await tester.tap(field);
+        await tester.pump();
+        final inputState = tester.state(find.byType(EditableText));
+        await tester.enterText(field, 'invalid');
+        await tester.pumpAndSettle();
+
+        expect(find.text('Enter a valid email address.'), findsOneWidget);
+        expect(tester.state(find.byType(EditableText)), same(inputState));
+        expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+
+        await tester.tapAt(tester.getCenter(find.byKey(blankKey)));
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(field).focusNode!.hasFocus, isFalse);
+
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+        expect(tester.testTextInput.isVisible, isTrue);
+      },
+    );
+  }
+
+  testWidgets('first tap refocuses a field validated on blur', (tester) async {
+    const blankKey = ValueKey<String>('blur-blank-space');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SmartForm(
+            children: const <Widget>[
+              SmartEmailField(name: 'email'),
+              SizedBox(key: blankKey, height: 100, width: 300),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final field = find.byType(TextField);
+    await tester.enterText(field, 'invalid');
+    final inputState = tester.state(find.byType(EditableText));
+    await tester.tapAt(tester.getCenter(find.byKey(blankKey)));
+    await tester.pump();
+    expect(find.text('Enter a valid email address.'), findsOneWidget);
+
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    expect(tester.state(find.byType(EditableText)), same(inputState));
+    expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
+  testWidgets('custom error wrapper preserves focused text input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SmartForm(
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            errorAnimationBuilder: (_, child, animation) => animation.value < .5
+                ? Opacity(opacity: .8, child: child)
+                : Transform.scale(scale: 1, child: child),
+            children: const <Widget>[SmartEmailField(name: 'email')],
+          ),
+        ),
+      ),
+    );
+
+    final field = find.byType(TextField);
+    await tester.tap(field);
+    await tester.pump();
+    final inputState = tester.state(find.byType(EditableText));
+    await tester.enterText(field, 'invalid');
+    await tester.pumpAndSettle();
+
+    expect(tester.state(find.byType(EditableText)), same(inputState));
+    expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+    expect(tester.testTextInput.isVisible, isTrue);
+  });
+
   testWidgets('tapping outside the form unfocuses its active field', (
     tester,
   ) async {
